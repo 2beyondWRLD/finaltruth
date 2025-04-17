@@ -13,6 +13,7 @@ class CampingScene extends Phaser.Scene {
     this.cursors = null;
     this.campfireLight = null;
     this.darkOverlay = null;
+    this.zone = null;
 
     // Fire management
     this.burnTime = 0;
@@ -87,14 +88,22 @@ class CampingScene extends Phaser.Scene {
       this.player.destroy();
     }
 
+    // Store the zone from incoming data
+    this.zone = data.zone;
+
     // Preserve incoming inventory
     console.log('Incoming data:', data);
-    this.inventory = data.inventory ? [...data.inventory] : [];
-    if (this.inventory.length === 0) {
-      this.inventory.push({ name: 'wood', quantity: 1 });
-      this.inventory.push({ name: 'cod', quantity: 1 });
-    }
+    this.inventory = data.inventory ? JSON.parse(JSON.stringify(data.inventory)) : [];
     console.log('Final inventory on entering CampingScene:', this.inventory);
+    console.log('Stokeable items:', this.findStokeItems());
+    console.log('Cookable items:', this.inventory.filter(item => {
+      const name = item.name.toLowerCase();
+      return name.includes('cod') || 
+             name.includes('fish') ||
+             name.includes('meat') ||
+             name.includes('food') ||
+             name.includes('raw');
+    }));
 
     // Restore states from registry with fallback values
     const cookingState = this.registry.get('cookingState') || {};
@@ -108,19 +117,22 @@ class CampingScene extends Phaser.Scene {
     this.isFireLit = fireState.isFireLit || false;
     this.burnTime = fireState.burnTime || 0;
     this.currentStokes = fireState.currentStokes || 0;
-    this.lightRadius = fireState.lightRadius || 150;
-    this.campfireScale = fireState.campfireScale || 1.5;
-    this.campfireOriginY = fireState.campfireOriginY || 0.75;
+    // Reset light properties to default values when fire is not lit
+    this.lightRadius = this.isFireLit ? (fireState.lightRadius || 150) : 150;
+    this.campfireScale = this.isFireLit ? (fireState.campfireScale || 1.5) : 1.5;
+    this.campfireOriginY = this.isFireLit ? (fireState.campfireOriginY || 0.75) : 0.75;
 
     const torchState = this.registry.get('torchState') || {};
     this.isTorchLit = torchState.isTorchLit || false;
     this.torchBurnTime = torchState.torchBurnTime || 0;
     this.torchCurrentStokes = torchState.torchCurrentStokes || 0;
-    this.torchLightRadius = torchState.torchLightRadius || 150;
-    this.torchScale = torchState.torchScale || 0.75;
-    this.torchOriginY = torchState.torchOriginY || 0.75;
+    // Reset torch properties to default values when torch is not lit
+    this.torchLightRadius = this.isTorchLit ? (torchState.torchLightRadius || 150) : 150;
+    this.torchScale = this.isTorchLit ? (torchState.torchScale || 0.75) : 0.75;
+    this.torchOriginY = this.isTorchLit ? (torchState.torchOriginY || 0.75) : 0.75;
 
     console.log('Restored cooking state - isCooking:', this.isCooking, 'cookingTime:', this.cookingTime, 'cookingComplete:', this.cookingComplete, 'cookedFoodItem:', this.cookedFoodItem);
+    console.log('Restored fire state - isFireLit:', this.isFireLit, 'burnTime:', this.burnTime);
 
     // Enable lighting with a slightly brighter ambient color
     this.lights.enable().setAmbientColor(0x444444);
@@ -149,34 +161,55 @@ class CampingScene extends Phaser.Scene {
     this.anims.create({ key: 'moveUp', frames: this.anims.generateFrameNumbers('player', { start: 30, end: 35 }), frameRate: 10, repeat: -1 });
     this.player.play('idleDown');
     
+    // Create campfire animation before applying it
+    this.anims.create({ key: 'smokeRise', frames: this.anims.generateFrameNumbers('smoke', { start: 0, end: 4 }), frameRate: 5, repeat: -1 });
+    this.anims.create({ key: 'campfireBurn', frames: this.anims.generateFrameNumbers('campfire', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
+    
     // Create campfire
     const campfireLayer = map.getObjectLayer('campfire');
     if (campfireLayer && campfireLayer.objects.length > 0) {
       const campfireObj = campfireLayer.objects[0];
+      
+      // Set correct positioning
       const originalCampfireY = campfireObj.y + (campfireObj.height / 2) - 10;
       const campfireX = campfireObj.x + (campfireObj.width / 2);
 
+      // Store original position for reference
+      this.originalCampfireX = campfireX;
+      this.originalCampfireY = originalCampfireY;
+      
+      // Create the campfire sprite
       this.campfire = this.physics.add.sprite(campfireX, originalCampfireY, 'smoke')
         .setScale(0.5)
         .setDepth(1)
-        .setPipeline('Light2D')
-        .setOrigin(0.5, this.campfireOriginY);
-
-      this.anims.create({ key: 'smokeRise', frames: this.anims.generateFrameNumbers('smoke', { start: 0, end: 4 }), frameRate: 5, repeat: -1 });
+        .setPipeline('Light2D');
+      
+      // Set initial animation
       this.campfire.play('smokeRise');
-
-      this.anims.create({ key: 'campfireBurn', frames: this.anims.generateFrameNumbers('campfire', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
-
+      
+      // Add light at campfire position
       this.campfireLight = this.lights.addLight(campfireX, originalCampfireY, 0, 0xffaa33, 3);
+      
+      console.log('Campfire created at:', campfireX, originalCampfireY);
+      console.log('Is fire lit:', this.isFireLit);
+      
+      // If fire is already lit (from state), update its appearance
       if (this.isFireLit) {
-        this.campfire.setTexture('campfire').play('campfireBurn');
-        this.campfire.setScale(this.campfireScale).setOrigin(0.5, this.campfireOriginY);
-        this.campfire.setY(originalCampfireY + 30);
+        console.log('Restoring lit campfire');
+        this.campfire.setTexture('campfire');
+        this.campfire.play('campfireBurn');
+        this.campfire.setScale(this.campfireScale);
+        this.campfire.setOrigin(0.5, this.campfireOriginY);
         this.campfireLight.setRadius(this.lightRadius);
+        console.log('Campfire scale:', this.campfireScale, 'Origin Y:', this.campfireOriginY);
+      } else {
+        // For unlit fire, set origin properly
+        this.campfire.setOrigin(0.5, this.campfireOriginY);
       }
 
-      // Make campfire interactive
-      this.campfire.setInteractive();
+      // Make campfire interactive and very clickable
+      this.campfire.setInteractive({ useHandCursor: true, pixelPerfect: false });
+      this.campfire.input.hitArea.setTo(-32, -32, 64, 64); // Larger hit area
       this.campfire.on('pointerdown', this.handleFireClick, this);
     }
 
@@ -198,12 +231,22 @@ class CampingScene extends Phaser.Scene {
       if (this.isTorchLit) {
         this.torch.setTexture('campfire').play('campfireBurn');
         this.torch.setScale(this.torchScale).setOrigin(0.5, this.torchOriginY);
-        this.torch.setY(originalTorchY + 30);
         this.torchLight.setRadius(this.torchLightRadius);
       }
 
       this.torchBurnMeter = this.add.graphics();
       this.updateTorchBurnMeter();
+
+      // Make torch interactive too
+      this.torch.setInteractive({ useHandCursor: true });
+      this.torch.input.hitArea.setTo(-16, -16, 32, 32); // Larger hit area
+      this.torch.on('pointerdown', () => {
+        if (this.isTorchLit) {
+          this.showDialog('Torch is lit', [{ text: 'OK', callback: () => {} }]);
+        } else {
+          this.showStokingMenu('torch');
+        }
+      });
     }
 
     // Add dark overlay
@@ -275,6 +318,16 @@ class CampingScene extends Phaser.Scene {
           cookingStartTime: 0
         });
       }
+    }
+
+    // Make skillet/cooking area interactive to claim food
+    if (this.skillet) {
+      this.skillet.setInteractive({ useHandCursor: true });
+      this.skillet.on('pointerdown', () => {
+        if (this.cookingComplete) {
+          this.claimCookedFood();
+        }
+      });
     }
 
     // Set world and camera bounds
@@ -368,13 +421,15 @@ class CampingScene extends Phaser.Scene {
     // Select item with ENTER key
     this.input.keyboard.on('keydown-ENTER', () => {
       if (this.dialogVisible) {
-        this.selectCookableItem();
+        this.selectDialogOption();
       } else if (this.stokingDialogVisible) {
         if (!this.quantityInputVisible) {
           this.showQuantityInput();
         } else {
           this.useStokingItem();
         }
+      } else if (this.cookingComplete && this.claimText) {
+        this.claimCookedFood();
       }
     });
 
@@ -383,18 +438,23 @@ class CampingScene extends Phaser.Scene {
   }
 
   update() {
-    // Handle player movement
-    this.player.setVelocity(0);
-      if (this.cursors.left.isDown) {
-      this.player.setVelocityX(-100).anims.play('moveLeft', true);
-      } else if (this.cursors.right.isDown) {
-      this.player.setVelocityX(100).anims.play('moveRight', true);
-      } else if (this.cursors.up.isDown) {
-      this.player.setVelocityY(-100).anims.play('moveUp', true);
-      } else if (this.cursors.down.isDown) {
-      this.player.setVelocityY(100).anims.play('moveDown', true);
+    // Handle player movement only when dialogs are not visible
+    if (!this.dialogVisible && !this.stokingDialogVisible) {
+      this.player.setVelocity(0);
+        if (this.cursors.left.isDown) {
+        this.player.setVelocityX(-100).anims.play('moveLeft', true);
+        } else if (this.cursors.right.isDown) {
+        this.player.setVelocityX(100).anims.play('moveRight', true);
+        } else if (this.cursors.up.isDown) {
+        this.player.setVelocityY(-100).anims.play('moveUp', true);
+        } else if (this.cursors.down.isDown) {
+        this.player.setVelocityY(100).anims.play('moveDown', true);
+      } else {
+        this.player.anims.play('idleDown', true);
+      }
     } else {
-      this.player.anims.play('idleDown', true);
+      // Stop player movement when dialogs are open
+      this.player.setVelocity(0);
     }
   }
 
@@ -403,7 +463,7 @@ class CampingScene extends Phaser.Scene {
       const name = item.name.toLowerCase();
       let stokes = 0;
 
-      if (name.includes("wood")) stokes = 3;
+      if (name.includes("wood") || name.includes("stick")) stokes = 3;
       else if (name === "lint" || name === "trash") stokes = 0.1;
 
       if (stokes > 0) {
@@ -417,19 +477,27 @@ class CampingScene extends Phaser.Scene {
         this.currentStokes = Math.min(this.currentStokes + totalStokes, this.maxStokes);
         this.burnTime = this.currentStokes * 30;
 
+        // Reset properties to default values if fire is being lit for the first time
+        if (!this.isFireLit) {
+          this.lightRadius = 150;
+          this.campfireScale = 1.5;
+          this.campfireOriginY = 0.75;
+        }
+
         this.lightRadius = Math.min(this.lightRadius + (20 * totalStokes), this.maxLightRadius);
         this.campfireLight.setRadius(this.lightRadius);
         this.campfireScale = Math.min(this.campfireScale + (0.1 * totalStokes), this.maxCampfireScale);
         this.campfireOriginY = Math.min(this.campfireOriginY + (0.01 * totalStokes), this.maxCampfireOriginY);
-        if (!this.isFireLit) {
-          this.campfire.setY(this.campfire.y + 30);
-        }
-        this.campfire.setScale(this.campfireScale).setOrigin(0.5, this.campfireOriginY);
-
+        
         if (!this.isFireLit) {
           this.isFireLit = true;
           this.campfire.setTexture('campfire').play('campfireBurn');
+          console.log("Fire lit successfully!");
         }
+        
+        // Always use original position
+        this.campfire.setPosition(this.originalCampfireX, this.originalCampfireY);
+        this.campfire.setScale(this.campfireScale).setOrigin(0.5, this.campfireOriginY);
 
         this.updateBurnMeter();
         console.log(`Stoked campfire with ${quantity} ${item.name}! Stokes: ${this.currentStokes}, Burn time: ${this.burnTime}s`);
@@ -444,7 +512,7 @@ class CampingScene extends Phaser.Scene {
           campfireOriginY: this.campfireOriginY
         });
       }
-      } else {
+    } else {
       console.log("Max stokes reached for campfire!");
     }
   }
@@ -454,7 +522,7 @@ class CampingScene extends Phaser.Scene {
       const name = item.name.toLowerCase();
       let stokes = 0;
 
-      if (name.includes("wood")) stokes = 3;
+      if (name.includes("wood") || name.includes("stick")) stokes = 3;
       else if (name === "lint" || name === "trash") stokes = 0.1;
 
       if (stokes > 0) {
@@ -468,19 +536,27 @@ class CampingScene extends Phaser.Scene {
         this.torchCurrentStokes = Math.min(this.torchCurrentStokes + totalStokes, this.maxStokes);
         this.torchBurnTime = this.torchCurrentStokes * 30;
 
+        // Reset properties to default values if torch is being lit for the first time
+        if (!this.isTorchLit) {
+          this.torchLightRadius = 150;
+          this.torchScale = 0.75;
+          this.torchOriginY = 0.75;
+        }
+
         this.torchLightRadius = Math.min(this.torchLightRadius + (20 * totalStokes), this.maxLightRadius);
         this.torchLight.setRadius(this.torchLightRadius);
         this.torchScale = Math.min(this.torchScale + (0.1 * totalStokes), this.maxTorchScale);
         this.torchOriginY = Math.min(this.torchOriginY + (0.01 * totalStokes), this.maxTorchOriginY);
-        if (!this.isTorchLit) {
-          this.torch.setY(this.torch.y + 30);
-        }
-        this.torch.setScale(this.torchScale).setOrigin(0.5, this.torchOriginY);
-
+        
         if (!this.isTorchLit) {
           this.isTorchLit = true;
           this.torch.setTexture('campfire').play('campfireBurn');
+          console.log("Torch lit successfully!");
         }
+
+        // Always use original position
+        this.torch.setPosition(this.torch.x, this.torch.y);
+        this.torch.setScale(this.torchScale).setOrigin(0.5, this.torchOriginY);
 
         this.updateTorchBurnMeter();
         console.log(`Stoked torch with ${quantity} ${item.name}! Stokes: ${this.torchCurrentStokes}, Burn time: ${this.torchBurnTime}s`);
@@ -503,7 +579,7 @@ class CampingScene extends Phaser.Scene {
   findStokeItems() {
     return this.inventory.filter(item => {
       const name = item.name.toLowerCase();
-      return (name.includes("wood") || name === "lint" || name === "trash") && item.quantity > 0;
+      return (name.includes("wood") || name.includes("stick") || name === "lint" || name === "trash") && item.quantity > 0;
     });
   }
 
@@ -511,6 +587,7 @@ class CampingScene extends Phaser.Scene {
     this.stokingItems = this.findStokeItems();
     if (this.stokingItems.length === 0) {
       console.log(`No stoking items in inventory for ${target}!`);
+      this.showDialog(`No items to stoke ${target}`, [{ text: 'OK', callback: () => {} }]);
       return;
     }
 
@@ -523,7 +600,7 @@ class CampingScene extends Phaser.Scene {
     this.stokingDialogBox = this.add.rectangle(288, 288, 200, 150, 0x000000, 0.9).setDepth(5);
     this.stokingDialogBox.setStrokeStyle(2, 0xffffff, 1);
 
-    this.stokingDialogTitle = this.add.text(288, 230, 'Select Item to Stoke', { fontSize: '16px', color: '#ffffff' })
+    this.stokingDialogTitle = this.add.text(288, 230, `Select Item to Stoke ${target}`, { fontSize: '16px', color: '#ffffff' })
       .setOrigin(0.5)
       .setDepth(6);
 
@@ -532,8 +609,26 @@ class CampingScene extends Phaser.Scene {
       const text = this.add.text(288, 260 + index * 20, `${item.name} (x${item.quantity})`, { fontSize: '14px', color: '#ffffff' })
         .setOrigin(0.5)
         .setDepth(6);
+      
+      // Make text interactive
+      text.setInteractive({ useHandCursor: true });
+      text.on('pointerdown', () => {
+        this.selectedItemIndex = index;
+        this.showQuantityInput();
+      });
+      
       this.stokingDialogTextItems.push(text);
     });
+
+    // Add a cancel option
+    const cancelText = this.add.text(288, 260 + this.stokingItems.length * 20, 'Cancel', { fontSize: '14px', color: '#ffffff' })
+      .setOrigin(0.5)
+      .setDepth(6);
+    cancelText.setInteractive({ useHandCursor: true });
+    cancelText.on('pointerdown', () => {
+      this.closeStokingDialog();
+    });
+    this.stokingDialogTextItems.push(cancelText);
 
     this.updateStokingDialogSelection();
   }
@@ -548,6 +643,7 @@ class CampingScene extends Phaser.Scene {
     this.quantityInputVisible = true;
     const selectedItem = this.stokingItems[this.selectedItemIndex];
     const maxQty = selectedItem.quantity;
+    this.selectedQuantity = 1;
 
     this.stokingDialogTextItems.forEach(text => text.destroy());
     this.stokingDialogTextItems = [];
@@ -561,6 +657,50 @@ class CampingScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(6);
     this.stokingDialogTextItems.push(this.quantityInputText);
+
+    // Add confirm and cancel buttons
+    const confirmText = this.add.text(288, 310, 'Confirm', { fontSize: '14px', color: '#00ff00' })
+      .setOrigin(0.5)
+      .setDepth(6);
+    confirmText.setInteractive({ useHandCursor: true });
+    confirmText.on('pointerdown', () => {
+      this.useStokingItem();
+    });
+    this.stokingDialogTextItems.push(confirmText);
+
+    const cancelText = this.add.text(288, 330, 'Cancel', { fontSize: '14px', color: '#ff0000' })
+      .setOrigin(0.5)
+      .setDepth(6);
+    cancelText.setInteractive({ useHandCursor: true });
+    cancelText.on('pointerdown', () => {
+      this.closeStokingDialog();
+    });
+    this.stokingDialogTextItems.push(cancelText);
+
+    // Add increment/decrement buttons
+    const decText = this.add.text(250, 280, '-', { fontSize: '16px', color: '#ffffff' })
+      .setOrigin(0.5)
+      .setDepth(6);
+    decText.setInteractive({ useHandCursor: true });
+    decText.on('pointerdown', () => {
+      if (this.selectedQuantity > 1) {
+        this.selectedQuantity--;
+        this.updateQuantityInput(maxQty);
+      }
+    });
+    this.stokingDialogTextItems.push(decText);
+
+    const incText = this.add.text(326, 280, '+', { fontSize: '16px', color: '#ffffff' })
+      .setOrigin(0.5)
+      .setDepth(6);
+    incText.setInteractive({ useHandCursor: true });
+    incText.on('pointerdown', () => {
+      if (this.selectedQuantity < maxQty) {
+        this.selectedQuantity++;
+        this.updateQuantityInput(maxQty);
+      }
+    });
+    this.stokingDialogTextItems.push(incText);
   }
 
   updateQuantityInput(maxQty) {
@@ -737,57 +877,102 @@ class CampingScene extends Phaser.Scene {
 
     const mainScene = this.scene.get('MainGameScene');
     this.scene.start('MainGameScene', {
-      zone: zoneList.find(z => z.name === "Village"),
+      zone: this.zone,
       inventory: this.inventory,
       promptCount: mainScene.promptCount
     });
   }
 
   handleFireClick() {
-    if (this.isFireLit && !this.isCooking && !this.cookingComplete) {
-      this.cookableItems = this.inventory.filter(item => item.name.toLowerCase() === 'cod');
-      if (this.cookableItems.length > 0) {
-        this.showDialog();
+    console.log("Fire clicked! isFireLit:", this.isFireLit, "isCooking:", this.isCooking, "cookingComplete:", this.cookingComplete);
+    
+    if (this.isFireLit) {
+      if (!this.isCooking) {
+        // Check for cookable items in inventory
+        const cookableItems = this.inventory.filter(item => {
+          const name = item.name.toLowerCase();
+          return name.includes('cod') || 
+                 name.includes('fish') ||
+                 name.includes('meat') ||
+                 name.includes('food') ||
+                 name.includes('raw');
+        });
+
+        console.log("Cookable items found:", cookableItems);
+
+        if (cookableItems.length > 0) {
+          this.cookableItems = cookableItems; // Store the cookable items
+          const options = cookableItems.map(item => ({
+            text: `${item.name} (${item.quantity})`,
+            callback: () => {
+              this.startCooking(item);
+            }
+          }));
+          options.push({ text: 'Cancel', callback: () => {} });
+
+          this.showDialog('What would you like to cook?', options);
+        } else {
+          this.showDialog('You have no food items to cook.', [{ text: 'OK', callback: () => {} }]);
+        }
+      } else if (this.cookingComplete) {
+        this.claimCookedFood();
       } else {
-        console.log("No food items in inventory!");
+        this.showDialog('You are already cooking something.', [{ text: 'OK', callback: () => {} }]);
       }
-    } else if (this.cookingComplete) {
-      this.claimCookedFood();
+    } else {
+      // If fire is not lit, show stoke menu instead
+      console.log("Fire not lit, showing stoke menu");
+      this.showStokingMenu('campfire');
     }
   }
 
-  showDialog() {
+  showDialog(title, options) {
     this.dialogVisible = true;
     this.selectedItemIndex = 0;
+
+    // Store options with callbacks
+    this.dialogOptions = options;
 
     this.dialogBox = this.add.rectangle(288, 288, 200, 150, 0x000000, 0.9).setDepth(5);
     this.dialogBox.setStrokeStyle(2, 0xffffff, 1);
 
-    this.dialogTitle = this.add.text(288, 230, 'Select Item to Cook', { fontSize: '16px', color: '#ffffff' })
+    this.dialogTitle = this.add.text(288, 230, title, { fontSize: '16px', color: '#ffffff' })
       .setOrigin(0.5)
       .setDepth(6);
 
     this.dialogTextItems = [];
-    this.cookableItems.forEach((item, index) => {
-      const text = this.add.text(288, 260 + index * 20, item.name, { fontSize: '14px', color: '#ffffff' })
+    options.forEach((option, index) => {
+      const text = this.add.text(288, 260 + index * 20, option.text, { fontSize: '14px', color: '#ffffff' })
         .setOrigin(0.5)
         .setDepth(6);
+      
+      // Make text interactive
+      text.setInteractive({ useHandCursor: true });
+      text.on('pointerdown', () => {
+        this.selectedItemIndex = index;
+        this.selectDialogOption();
+      });
+      
       this.dialogTextItems.push(text);
     });
 
     this.updateDialogSelection();
   }
 
+  selectDialogOption() {
+    if (this.dialogOptions && this.dialogOptions[this.selectedItemIndex]) {
+      const callback = this.dialogOptions[this.selectedItemIndex].callback;
+      this.closeDialog();
+      if (callback) callback();
+    } else {
+      this.closeDialog();
+    }
+  }
+
   updateDialogSelection() {
     this.dialogTextItems.forEach((text, index) => {
       text.setColor(index === this.selectedItemIndex ? '#ffff00' : '#ffffff');
     });
-  }
-
-  selectCookableItem() {
-    const selectedItem = this.cookableItems[this.selectedItemIndex];
-    this.closeDialog();
-    this.startCooking(selectedItem);
   }
 
   closeDialog() {
@@ -797,19 +982,38 @@ class CampingScene extends Phaser.Scene {
     this.dialogTextItems.forEach(text => text.destroy());
     this.dialogTextItems = [];
     this.cookableItems = [];
+    this.dialogOptions = null;
     this.selectedItemIndex = 0;
     this.dialogTitle = null;
   }
 
   startCooking(foodItem) {
-    const index = this.inventory.findIndex(item => item.name.toLowerCase() === foodItem.name.toLowerCase());
-    if (index > -1) {
-      this.inventory.splice(index, 1); // Remove item immediately
+    console.log("Starting to cook:", foodItem.name);
+    
+    // Find the item in inventory and reduce quantity by 1
+    const index = this.inventory.findIndex(item => item.name === foodItem.name);
+    if (index === -1) {
+      console.error("Item not found in inventory:", foodItem.name);
+      return;
+    }
+    
+    // Reduce quantity
+    this.inventory[index].quantity--;
+    if (this.inventory[index].quantity <= 0) {
+      this.inventory.splice(index, 1);
     }
 
     this.cookingStartTime = Date.now(); // Record start time
 
+    // Create skillet and progress bar
     this.skillet = this.add.image(this.campfire.x, this.campfire.y + 5, 'skillet').setScale(3).setDepth(2);
+    this.skillet.setInteractive({ useHandCursor: true });
+    this.skillet.on('pointerdown', () => {
+      if (this.cookingComplete) {
+        this.claimCookedFood();
+      }
+    });
+    
     this.isCooking = true;
     this.cookingTime = 0;
     this.cookingComplete = false;
@@ -833,6 +1037,8 @@ class CampingScene extends Phaser.Scene {
       cookedFoodItem: this.cookedFoodItem,
       cookingStartTime: this.cookingStartTime
     });
+    
+    console.log("Cooking started for:", this.cookedFoodItem.name);
   }
 
   updateCooking() {
@@ -873,16 +1079,21 @@ class CampingScene extends Phaser.Scene {
 
   claimCookedFood() {
     if (this.cookingComplete) {
+      console.log("Claiming cooked food:", this.cookedFoodItem);
+      
+      // Add cooked food to inventory
       this.inventory.push(this.cookedFoodItem);
-      this.skillet.destroy();
-      this.progressBar.destroy();
-      if (this.claimText) {
-        this.claimText.destroy();
-        this.claimText = null;
-      }
+      
+      // Clean up cooking UI
+      if (this.skillet) this.skillet.destroy();
+      if (this.progressBar) this.progressBar.destroy();
+      if (this.claimText) this.claimText.destroy();
+      
+      // Reset cooking state
       this.cookingComplete = false;
       this.cookedFoodItem = null;
-      console.log("Claimed cooked food:", this.inventory);
+      
+      console.log("Updated inventory:", this.inventory);
 
       // Update cooking state in registry
       this.registry.set('cookingState', {
@@ -892,6 +1103,9 @@ class CampingScene extends Phaser.Scene {
         cookedFoodItem: null,
         cookingStartTime: 0
       });
+      
+      // Show confirmation dialog
+      this.showDialog('Food claimed and added to inventory!', [{ text: 'OK', callback: () => {} }]);
     }
   }
 }

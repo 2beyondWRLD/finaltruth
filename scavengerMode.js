@@ -88,6 +88,7 @@ function createScavengerMode(data) {
   const zoneData = data.zone || SCAVENGER_ZONES[0];
   this.playerStats = data.playerStats || createInitialStats(zoneData.name);
   this.localInventory = data.inventory || [{ name: "Bread", quantity: 1 }];
+  this.currentZone = zoneData.name;
 
   // Background setup
   this.background = this.add.image(0, 0, zoneData.backgroundKey)

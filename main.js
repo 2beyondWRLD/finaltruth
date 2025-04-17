@@ -2790,6 +2790,7 @@ function createScene() {
   this.currentZone = zoneData.name;
   this.playerStats.currentZone = this.currentZone;
   this.hasPromptedCamping = false;
+  this.lastCampingPromptTime = null;
   
   // Initialize arrays for tracking game objects
   this.exclamationSprites = [];
@@ -3583,9 +3584,13 @@ function createScene() {
 
   // Set up camping prompt timer (10 seconds)
   this.time.delayedCall(10000, () => {
-    if (!this.hasPromptedCamping && hasCampingMaterials(this)) {
+    const gameTime = this.registry.get('gameTime');
+    const gameHour = (6 + Math.floor(gameTime / this.secondsPerHour)) % 24;
+    const isNearNight = gameHour === 18; // 6 PM
+    
+    if (!this.hasPromptedCamping && hasCampingMaterials(this) && this.currentZone !== "Village" && isNearNight) {
       this.hasPromptedCamping = true;
-      showDialog(this, "You have the materials to set up camp. Would you like to rest?");
+      showDialog(this, "Night is approaching. Would you like to set up camp?");
       const options = [
         {
           label: "Yes, set up camp",
@@ -3715,6 +3720,11 @@ function updateScene(time, delta) {
   const gameHour = (6 + Math.floor(gameTime / this.secondsPerHour)) % 24;
   this.isNight = gameHour >= 20 || gameHour < 6;
   
+  // Reset camping prompt at the start of each new day (6 AM)
+  if (gameHour === 6) {
+    this.hasPromptedCamping = false;
+  }
+  
   // Update time display in HUD with safety checks and proper recreation
   const hour = gameHour % 12 === 0 ? 12 : gameHour % 12;
   const ampm = gameHour < 12 ? "AM" : "PM";
@@ -3809,12 +3819,18 @@ function updateScene(time, delta) {
   }
 
   // Camping prompt logic with better timing
-  if (gameHour === 18 && !this.hasPromptedCamping && this.currentZone !== "Village" && this.narrativeScreen === SCREEN_NONE) {
+  if (gameHour === 18 && !this.hasPromptedCamping && 
+      this.currentZone !== "Village" && 
+      this.narrativeScreen === SCREEN_NONE) {
+    // Store the current time to prevent multiple prompts
+    this.lastCampingPromptTime = gameTime;
     this.narrativeScreen = SCREEN_CAMPING_PROMPT;
     showDialog(this, "It's getting dark (6:00 PM), do you want to set up camp?\n(Press SPACE to confirm)");
     this.hasPromptedCamping = true;
-  } else if (gameHour !== 18 && this.hasPromptedCamping) {
-    this.hasPromptedCamping = false; // Reset flag when time changes
+  } else if (gameHour !== 18 || (this.lastCampingPromptTime && Math.abs(gameTime - this.lastCampingPromptTime) > this.secondsPerHour)) {
+    // Reset the flag when the hour changes or enough time has passed
+    this.hasPromptedCamping = false;
+    this.lastCampingPromptTime = null;
   }
 
   // Handle camping prompt interaction

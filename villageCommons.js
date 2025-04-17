@@ -19,6 +19,7 @@ const SCREEN_TINKER = 10;
 const SCREEN_CRAFT = 11;
 const SCREEN_TRADING = 12;
 const SCREEN_BATTLE = 13;
+const SCREEN_ARMORY = 14;
 
 const BG_SCALE = 0.3;
 const PLAYER_SCALE = 2.5;
@@ -453,6 +454,12 @@ function handleVillageContractInteraction(scene, obj) {
     case "merchant_quarter":
       showMerchantQuarterOptions(scene);
       break;
+    case "craftsman_workshop":
+      showCraftingWorkshopOptions(scene);
+      break;
+    case "armory":
+      showArmoryOptions(scene);
+      break;
     case "scavenger_mode":
       showDialog(scene, "Enter Scavenger Mode?\n(Press SPACE to confirm)");
       scene.input.keyboard.once("keydown-SPACE", () => {
@@ -482,6 +489,7 @@ function createScene() {
     { name: "Bread", quantity: 1 },
     { name: "Iron Sword", quantity: 1 }
   ];
+  this.currentZone = "Village";
   this.deposits = [];
   this.listedItems = [];
 
@@ -539,31 +547,137 @@ function createScene() {
   updateHUD(this);
 }
 
-function updateScene() {
-  if (this.narrativeScreen >= SCREEN_LIQUIDITY) {
-    this.player.setVelocity(0);
-    this.player.anims.stop();
+function updateScene(time, delta) {
+  if (this.isRestarting) return;
+  
+  if (!this.player || !this.player.body) return;
+
+  // Update game time
+  let gameTime = this.registry.get('gameTime') || 0;
+  gameTime += delta / 1000;
+  this.registry.set('gameTime', gameTime % this.secondsPerDay);
+  const gameHour = (6 + Math.floor(gameTime / this.secondsPerHour)) % 24;
+  this.isNight = gameHour >= 20 || gameHour < 6;
+  
+  // Update time display in HUD with safety checks and proper recreation
+  const hour = gameHour % 12 === 0 ? 12 : gameHour % 12;
+  const ampm = gameHour < 12 ? "AM" : "PM";
+  const timeString = `${hour}:00 ${ampm}`;
+  
+  try {
+    if (this.timeText && this.timeText.active) {
+      this.timeText.setText(timeString);
+    } else {
+      // Create a new timeText if it doesn't exist or was destroyed
+      if (this.timeText) this.timeText.destroy();
+      
+      this.timeText = this.add.text(10, 10, timeString, {
+        font: "12px Arial",
+        fill: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 2
+      }).setScrollFactor(0).setDepth(12000);
+    }
+  } catch (error) {
+    console.warn("Error with time display, recreating:", error);
+    try {
+      // Last resort - recreate from scratch with no text
+      if (this.timeText) this.timeText.destroy();
+      this.timeText = this.add.text(10, 10, "", {
+        font: "12px Arial",
+        fill: "#ffffff",
+      }).setScrollFactor(0).setDepth(12000);
+      
+      // Set text in next frame
+      this.time.delayedCall(100, () => {
+        if (this.timeText && this.timeText.active) {
+          this.timeText.setText(timeString);
+        }
+      });
+    } catch (err) {
+      console.error("Failed to recreate time display:", err);
+    }
+  }
+
+  // Update day/night transition
+  if (this.isNight && !this.wasNight) {
+    this.tweens.add({
+      targets: this.nightOverlay,
+      alpha: 0.8,
+      duration: 5000,
+      ease: 'Linear'
+    });
+    
+    // Fade in stars
+    this.stars.forEach(star => {
+      this.tweens.add({
+        targets: star,
+        alpha: Phaser.Math.Between(3, 9) * 0.1,
+        duration: 3000,
+        ease: 'Linear'
+      });
+    });
+  } else if (!this.isNight && this.wasNight) {
+    this.tweens.add({
+      targets: this.nightOverlay,
+      alpha: 0,
+      duration: 5000,
+      ease: 'Linear'
+    });
+    
+    // Fade out stars
+    this.stars.forEach(star => {
+      this.tweens.add({
+        targets: star,
+        alpha: 0,
+        duration: 3000,
+        ease: 'Linear'
+      });
+    });
+  }
+  this.wasNight = this.isNight;
+
+  // Update player shadow
+  if (this.playerShadow) {
+    this.playerShadow.setPosition(this.player.x, this.player.y + 12);
+  }
+
+  // Clear monsters safely
+  if (this.monsters && (!this.isNight || this.currentZone === "Village")) {
+    this.monsters.clear(true, true);
+  }
+
+  // Handle player death and scene restart
+  if (this.playerStats && this.playerStats.health <= 0 && this.currentZone !== "Village" && !this.isDying) {
+    console.log("Player died in Scavenger Mode!");
+    handlePlayerDeath(this);
     return;
   }
 
-  const speed = 80;
-  this.player.setVelocity(0);
-  const keys = this.input.keyboard.addKeys({ up: "W", left: "A", down: "S", right: "D" });
+  // Set time to 5:00 PM when 'T' is pressed
+  if (Phaser.Input.Keyboard.JustDown(this.keys.t)) {
+    this.registry.set('gameTime', 110); // 11 hours * 10 seconds per hour
+    console.log("Time set to 5:00 PM");
+  }
 
-  if (keys.left.isDown) {
-    this.player.setVelocityX(-speed);
-    this.player.anims.play("walk-left", true);
-  } else if (keys.right.isDown) {
-    this.player.setVelocityX(speed);
-    this.player.anims.play("walk-right", true);
-  } else if (keys.up.isDown) {
-    this.player.setVelocityY(-speed);
-    this.player.anims.play("walk-up", true);
-  } else if (keys.down.isDown) {
-    this.player.setVelocityY(speed);
-    this.player.anims.play("walk-down", true);
-  } else {
-    this.player.anims.stop();
+  // Zone changing shortcut with better transition
+  if (Phaser.Input.Keyboard.JustDown(this.keys.z)) {
+    console.log("Switching zone, current gameTime:", this.registry.get('gameTime'));
+    currentZoneIndex = (currentZoneIndex + 1) % zoneList.length;
+    
+    // Add transition effect
+    this.cameras.main.fadeOut(500);
+    this.time.delayedCall(500, () => {
+      this.scene.restart({ zone: zoneList[currentZoneIndex], inventory: this.localInventory, promptCount: this.promptCount });
+    });
+    return;
+  }
+  
+  // Show inventory on I key press (when not in other dialogs)
+  if (Phaser.Input.Keyboard.JustDown(this.keys.i) && this.narrativeScreen === SCREEN_NONE) {
+    this.narrativeScreen = SCREEN_ITEM_MENU;
+    showItemMenu(this);
+    return;
   }
 }
 
@@ -580,3 +694,97 @@ class MainGameScene extends Phaser.Scene {
 }
 
 const game = new Phaser.Game(GAME_CONFIG);
+
+function showArmoryOptions(scene) {
+  const options = [
+    {
+      label: "Manage Equipment",
+      callback: () => showEquipmentManagement(scene)
+    },
+    {
+      label: "Upgrade Skills",
+      callback: () => showSkillUpgrades(scene)
+    },
+    {
+      label: "Exit",
+      callback: () => hideModalOverlay(scene)
+    }
+  ];
+  createScrollableMenu(scene, "Armory", options);
+}
+
+function showEquipmentManagement(scene) {
+  const equippedItems = scene.playerStats.equippedItems || {};
+  const options = [
+    {
+      label: "Weapons",
+      callback: () => showEquipmentCategory(scene, "weapon", equippedItems.weapon)
+    },
+    {
+      label: "Armor",
+      callback: () => showEquipmentCategory(scene, "armor", equippedItems.armor)
+    },
+    {
+      label: "Special Moves",
+      callback: () => showEquipmentCategory(scene, "special", equippedItems.special)
+    },
+    {
+      label: "Back",
+      callback: () => showArmoryOptions(scene)
+    }
+  ];
+  createScrollableMenu(scene, "Equipment Management", options);
+}
+
+function showEquipmentCategory(scene, category, currentItem) {
+  const inventoryItems = scene.localInventory.filter(item => item.type === category);
+  const options = inventoryItems.map(item => ({
+    label: `${item.name}${currentItem === item.name ? " (Equipped)" : ""}`,
+    callback: () => equipItem(scene, category, item)
+  }));
+  options.push({
+    label: "Back",
+    callback: () => showEquipmentManagement(scene)
+  });
+  createScrollableMenu(scene, `Select ${category.charAt(0).toUpperCase() + category.slice(1)}`, options);
+}
+
+function equipItem(scene, category, item) {
+  if (!scene.playerStats.equippedItems) {
+    scene.playerStats.equippedItems = {};
+  }
+  scene.playerStats.equippedItems[category] = item.name;
+  showEquipmentCategory(scene, category, item.name);
+}
+
+function showSkillUpgrades(scene) {
+  const skills = [
+    { name: "Attack", current: scene.playerStats.attack || 1, cost: 100 },
+    { name: "Defense", current: scene.playerStats.defense || 1, cost: 100 },
+    { name: "Durability", current: scene.playerStats.durability || 1, cost: 100 },
+    { name: "Luck", current: scene.playerStats.luck || 1, cost: 100 },
+    { name: "Fortune", current: scene.playerStats.fortune || 1, cost: 100 }
+  ];
+
+  const options = skills.map(skill => ({
+    label: `${skill.name} (Level ${skill.current}) - ${skill.cost} Oromozi`,
+    callback: () => upgradeSkill(scene, skill)
+  }));
+  options.push({
+    label: "Back",
+    callback: () => showArmoryOptions(scene)
+  });
+  createScrollableMenu(scene, "Skill Upgrades", options);
+}
+
+function upgradeSkill(scene, skill) {
+  const cost = skill.cost * skill.current;
+  if (scene.playerStats.oromozi >= cost) {
+    scene.playerStats.oromozi -= cost;
+    scene.playerStats[skill.name.toLowerCase()] = skill.current + 1;
+    updateHUD(scene);
+    showSkillUpgrades(scene);
+  } else {
+    showDialog(scene, `Not enough Oromozi! Need ${cost} but only have ${scene.playerStats.oromozi}`);
+  }
+}
