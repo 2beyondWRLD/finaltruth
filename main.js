@@ -875,287 +875,7 @@ function showWithdrawResourceScreen(scene) {
 }
 
 /* =======================================================
-   BATTLE MODE FUNCTIONS (IMPROVED)
-======================================================= */
-function calculateBattleStats(scene) {
-  let baseStats = { 
-    health: scene.playerStats.health, 
-    attack: 8 + (scene.playerStats.level - 1) * 2, // Base attack scales with level
-    evasion: 5 + Math.floor((scene.playerStats.level - 1) * 0.5), 
-    defense: 3 + Math.floor((scene.playerStats.level - 1) * 0.7)
-  };
   
-  scene.equippedItems.forEach(itemName => {
-    const itemData = getItemData(scene, itemName);
-    if (!itemData) return;
-
-    if (itemData.combatEffects) {
-      if (itemData.combatEffects.attack) baseStats.attack += itemData.combatEffects.attack;
-      if (itemData.combatEffects.evasion) baseStats.evasion += itemData.combatEffects.evasion;
-      if (itemData.combatEffects.defense) baseStats.defense += itemData.combatEffects.defense;
-    }
-
-    if (itemData.statEffects && itemData.statEffects.health) {
-      baseStats.health = Math.min(baseStats.health + itemData.statEffects.health, 100);
-    }
-  });
-  return baseStats;
-}
-
-function enterBattleMode(scene) {
-  scene.narrativeScreen = SCREEN_BATTLE;
-  showModalOverlay(scene);
-  const battleStats = calculateBattleStats(scene);
-  
-  // Create an enemy for battle simulation
-  const enemyLevel = Math.max(1, scene.playerStats.level - 1 + Math.floor(Math.random() * 3));
-  const enemy = {
-    name: ["Goblin", "Wolf", "Bandit", "Skeleton", "Troll"][Math.floor(Math.random() * 5)],
-    health: 50 + enemyLevel * 10,
-    maxHealth: 50 + enemyLevel * 10,
-    attack: 5 + enemyLevel * 2,
-    defense: 2 + Math.floor(enemyLevel * 1.5),
-    level: enemyLevel
-  };
-  
-  scene.battleEnemy = enemy;
-  scene.battleTurn = 0;
-  scene.battleLog = [];
-  
-  updateBattleUI(scene);
-  
-  // Add combat controls
-  scene.input.keyboard.off('keydown-SPACE');
-  scene.input.keyboard.on('keydown-SPACE', () => performBattleAction(scene, 'attack'));
-  scene.input.keyboard.on('keydown-ONE', () => performBattleAction(scene, 'attack'));
-  scene.input.keyboard.on('keydown-TWO', () => performBattleAction(scene, 'defend'));
-  scene.input.keyboard.on('keydown-THREE', () => performBattleAction(scene, 'item'));
-  scene.input.keyboard.on('keydown-FOUR', () => performBattleAction(scene, 'flee'));
-}
-
-function updateBattleUI(scene) {
-  const battleStats = calculateBattleStats(scene);
-  const enemy = scene.battleEnemy;
-  
-  let battleText = `Battle Mode - Turn ${scene.battleTurn}\n\n`;
-  battleText += `Player (Lv.${scene.playerStats.level}):\nHP: ${scene.playerStats.health}/${100}\nATK: ${battleStats.attack} DEF: ${battleStats.defense} EVA: ${battleStats.evasion}\n\n`;
-  
-  battleText += `Enemy ${enemy.name} (Lv.${enemy.level}):\nHP: ${enemy.health}/${enemy.maxHealth}\nATK: ${enemy.attack} DEF: ${enemy.defense}\n\n`;
-  
-  // Add recent battle log
-  if (scene.battleLog && scene.battleLog.length > 0) {
-    battleText += "Battle Log:\n";
-    const recentLogs = scene.battleLog.slice(-3);
-    recentLogs.forEach(log => {
-      battleText += `${log}\n`;
-    });
-    battleText += "\n";
-  }
-  
-  battleText += "Commands:\n1) Attack  2) Defend\n3) Use Item  4) Flee";
-  
-  showDialog(scene, battleText);
-}
-
-function performBattleAction(scene, action) {
-  if (!scene.battleEnemy) return;
-  
-  const battleStats = calculateBattleStats(scene);
-  const enemy = scene.battleEnemy;
-  scene.battleTurn++;
-  
-  // Player's turn
-  let damage = 0;
-  let log = "";
-  
-  switch(action) {
-    case 'attack':
-      // Calculate damage with some randomness
-      damage = Math.max(1, battleStats.attack - enemy.defense + Math.floor(Math.random() * 5) - 2);
-      enemy.health = Math.max(0, enemy.health - damage);
-      log = `You attack for ${damage} damage!`;
-      scene.battleLog.push(log);
-      break;
-      
-    case 'defend':
-      // Temporary defense boost for next enemy attack
-      scene.battleDefending = true;
-      log = `You take a defensive stance!`;
-      scene.battleLog.push(log);
-      break;
-      
-    case 'item':
-      // Show inventory for item use
-      scene.input.keyboard.off('keydown-SPACE');
-      scene.input.keyboard.off('keydown-ONE');
-      scene.input.keyboard.off('keydown-TWO');
-      scene.input.keyboard.off('keydown-THREE');
-      scene.input.keyboard.off('keydown-FOUR');
-      
-      showBattleItemMenu(scene);
-      return;
-      
-    case 'flee':
-      // Chance to escape based on player level vs enemy level
-      const escapeChance = 0.4 + (scene.playerStats.level - enemy.level) * 0.1;
-      if (Math.random() < escapeChance) {
-        scene.battleLog.push("You successfully fled!");
-        endBattle(scene, 'flee');
-        return;
-      } else {
-        log = "Failed to escape!";
-        scene.battleLog.push(log);
-      }
-      break;
-  }
-  
-  // Check if enemy is defeated
-  if (enemy.health <= 0) {
-    endBattle(scene, 'victory');
-    return;
-  }
-  
-  // Enemy's turn
-  const enemyDamage = Math.max(1, enemy.attack - battleStats.defense - (scene.battleDefending ? 5 : 0) + Math.floor(Math.random() * 4) - 2);
-  
-  // Evasion chance
-  const dodgeChance = battleStats.evasion / 100;
-  if (Math.random() < dodgeChance) {
-    scene.battleLog.push(`${enemy.name} attacks but you dodge!`);
-  } else {
-    scene.playerStats.health = Math.max(0, scene.playerStats.health - enemyDamage);
-    scene.battleLog.push(`${enemy.name} attacks for ${enemyDamage} damage!`);
-    
-    // Reset defending status
-    scene.battleDefending = false;
-  }
-  
-  // Check if player is defeated
-  if (scene.playerStats.health <= 0) {
-    endBattle(scene, 'defeat');
-    return;
-  }
-  
-  // Update battle UI
-  updateBattleUI(scene);
-}
-
-function showBattleItemMenu(scene) {
-  const healingItems = scene.localInventory.filter(item => {
-    const itemData = getItemData(scene, item.name);
-    return itemData && itemData.statEffects && itemData.statEffects.health;
-  });
-  
-  if (healingItems.length === 0) {
-    scene.battleLog.push("No usable items!");
-    scene.input.keyboard.on('keydown-SPACE', () => performBattleAction(scene, 'attack'));
-    scene.input.keyboard.on('keydown-ONE', () => performBattleAction(scene, 'attack'));
-    scene.input.keyboard.on('keydown-TWO', () => performBattleAction(scene, 'defend'));
-    scene.input.keyboard.on('keydown-THREE', () => performBattleAction(scene, 'item'));
-    scene.input.keyboard.on('keydown-FOUR', () => performBattleAction(scene, 'flee'));
-    updateBattleUI(scene);
-    return;
-  }
-  
-  const options = healingItems.map(item => {
-    const itemData = getItemData(scene, item.name);
-    const healAmount = itemData && itemData.statEffects ? itemData.statEffects.health || 0 : 0;
-    
-    return {
-      label: `${item.name} (Heals ${healAmount}) x${item.quantity}`,
-      callback: () => {
-        // Use the item
-        applyItemEffects(scene, itemData);
-        removeFromInventory(scene, item.name, 1);
-        scene.battleLog.push(`Used ${item.name} to restore health!`);
-        
-        // Restore battle controls
-        scene.input.keyboard.on('keydown-SPACE', () => performBattleAction(scene, 'attack'));
-        scene.input.keyboard.on('keydown-ONE', () => performBattleAction(scene, 'attack'));
-        scene.input.keyboard.on('keydown-TWO', () => performBattleAction(scene, 'defend'));
-        scene.input.keyboard.on('keydown-THREE', () => performBattleAction(scene, 'item'));
-        scene.input.keyboard.on('keydown-FOUR', () => performBattleAction(scene, 'flee'));
-        
-        // Enemy still gets a turn
-        performBattleAction(scene, 'used-item');
-      }
-    };
-  });
-  
-  options.push({
-    label: "Cancel",
-    callback: () => {
-      // Restore battle controls
-      scene.input.keyboard.on('keydown-SPACE', () => performBattleAction(scene, 'attack'));
-      scene.input.keyboard.on('keydown-ONE', () => performBattleAction(scene, 'attack'));
-      scene.input.keyboard.on('keydown-TWO', () => performBattleAction(scene, 'defend'));
-      scene.input.keyboard.on('keydown-THREE', () => performBattleAction(scene, 'item'));
-      scene.input.keyboard.on('keydown-FOUR', () => performBattleAction(scene, 'flee'));
-      updateBattleUI(scene);
-    }
-  });
-  
-  createScrollableMenu(scene, "Select an item to use:", options);
-}
-
-function endBattle(scene, result) {
-  let finalMessage = '';
-  
-  switch(result) {
-    case 'victory':
-      // Calculate rewards based on enemy level
-      const expGain = 10 + scene.battleEnemy.level * 5;
-      const oromoziGain = 20 + scene.battleEnemy.level * 10;
-      
-      scene.playerStats.experience = (scene.playerStats.experience || 0) + expGain;
-      scene.playerStats.oromozi += oromoziGain;
-      
-      finalMessage = `Victory! You defeated the ${scene.battleEnemy.name}!\nGained ${expGain} EXP and ${oromoziGain} OROMOZI.`;
-      
-      // Check for level up
-      checkLevelUp(scene);
-      
-      // Random loot chance
-      if (Math.random() < 0.4) {
-        const loot = getRandomLootForZone(scene);
-        if (loot) {
-          addToInventory(scene, loot);
-          finalMessage += `\nFound: ${loot}`;
-        }
-      }
-      break;
-      
-    case 'defeat':
-      // Penalties for defeat - lose some oromozi but don't die
-      const lossAmount = Math.min(scene.playerStats.oromozi, 50);
-      scene.playerStats.oromozi -= lossAmount;
-      scene.playerStats.health = 20; // Leave player wounded but alive
-      
-      finalMessage = `Defeat! You were beaten by the ${scene.battleEnemy.name}.\nLost ${lossAmount} OROMOZI.`;
-      break;
-      
-    case 'flee':
-      finalMessage = `You escaped from the ${scene.battleEnemy.name}.`;
-      break;
-  }
-  
-  // Show final battle message
-  showDialog(scene, finalMessage + "\n\n(Press SPACE to exit)");
-  
-  // Clean up battle state
-  scene.input.keyboard.off('keydown-ONE');
-  scene.input.keyboard.off('keydown-TWO');
-  scene.input.keyboard.off('keydown-THREE');
-  scene.input.keyboard.off('keydown-FOUR');
-  
-  scene.input.keyboard.once("keydown-SPACE", () => {
-    scene.narrativeScreen = SCREEN_NONE;
-    hideDialog(scene);
-    hideModalOverlay(scene);
-    updateHUD(scene);
-  });
-}
-
 /* =======================================================
    5) MODULE MENUS FOR OTHER VILLAGE BUILDINGS
 ======================================================= */
@@ -1858,6 +1578,9 @@ function handleVillageContractInteraction(scene, obj) {
     case "tinkerers_lab":
       showTinkerersLabOptions(scene);
       break;
+    case "dungeon_entrance":
+      handleDungeonEntrance(scene);
+      break;
     case "scavenger_mode":
       console.log("Entering Scavenger Mode...");
       showDialog(scene, "Enter Scavenger Mode with your current inventory?\n(Press SPACE to confirm)");
@@ -1869,43 +1592,76 @@ function handleVillageContractInteraction(scene, obj) {
           scene.time.delayedCall(500, () => {
             const currentOromozi = scene.playerStats.oromozi;
             scene.playerStats = createInitialStats(targetZone.name, currentOromozi);
-            scene.scene.restart({ zone: targetZone, inventory: scene.localInventory, promptCount: 0 });
+            scene.scene.restart({ zone: targetZone, inventory: scene.localInventory, promptCount: scene.promptCount });
           });
         } else {
           console.warn("Outer Grasslands zone not found!");
         }
       });
       break;
-    case "battle_mode":
-      console.log("Entering Battle Mode...");
-      enterBattleMode(scene);
+    case "camping_mode":
+      console.log("Entering Camping Mode...");
+      const gameTime = scene.registry.get('gameTime');
+      const gameHour = (6 + Math.floor(gameTime / scene.secondsPerHour)) % 24;
+      const isNearNight = gameHour >= 18 && gameHour < 20;
+      const isNight = gameHour >= 20 || gameHour < 6;
+      
+      if (isNearNight || isNight) {
+        showDialog(scene, `It's ${isNearNight ? "getting dark" : "night"}, do you want to set up camp?\n(Press SPACE to confirm)`);
+        scene.input.keyboard.once("keydown-SPACE", () => {
+          if (hasCampingMaterials(scene)) {
+            initiateCampingSetup(scene);
+          } else {
+            showDialog(scene, "You need 2 sticks and 1 cloth to set up camp.\n(Press SPACE to continue)");
+            scene.input.keyboard.once("keydown-SPACE", () => {
+              hideDialog(scene);
+            });
+          }
+        });
+      } else {
+        showDialog(scene, "You can only set up camp during near-night (6:00 PM - 8:00 PM) or night (8:00 PM - 6:00 AM).\n(Press SPACE to continue)");
+        scene.input.keyboard.once("keydown-SPACE", () => {
+          hideDialog(scene);
+        });
+      }
       break;
-      case "camping_mode":
-        console.log("Entering Camping Mode...");
-        const gameTime = scene.registry.get('gameTime');
-        const gameHour = (6 + Math.floor(gameTime / scene.secondsPerHour)) % 24;
-        const isNearNight = gameHour >= 18 && gameHour < 20;
-        const isNight = gameHour >= 20 || gameHour < 6;
-        
-        if (isNearNight || isNight) {
-          showDialog(scene, `It's ${isNearNight ? "getting dark" : "night"}, do you want to set up camp?\n(Press SPACE to confirm)`);
-          scene.input.keyboard.once("keydown-SPACE", () => {
-            if (hasCampingMaterials(scene)) {
-              initiateCampingSetup(scene);
-            } else {
-              showDialog(scene, "You need 2 sticks and 1 cloth to set up camp.\n(Press SPACE to continue)");
-              scene.input.keyboard.once("keydown-SPACE", () => {
-                hideDialog(scene);
-              });
-            }
-          });
-        } else {
-          showDialog(scene, "You can only set up camp during near-night (6:00 PM - 8:00 PM) or night (8:00 PM - 6:00 AM).\n(Press SPACE to continue)");
-          scene.input.keyboard.once("keydown-SPACE", () => {
-            hideDialog(scene);
-          });
-        }
-        break;
+  }
+}
+
+function handleDungeonEntrance(scene) {
+  // Check if player has a dungeon key
+  const dungeonKey = scene.localInventory.find(item => item.name === "Dungeon Key");
+  
+  if (dungeonKey && dungeonKey.quantity > 0) {
+    showDialog(scene, "Use Dungeon Key to enter the ancient dungeon?\n(Press SPACE to confirm)");
+    
+    scene.input.keyboard.once("keydown-SPACE", () => {
+      // Remove one key from inventory
+      removeFromInventory(scene, "Dungeon Key", 1);
+      
+      // Add visual effect for key use
+      createSimpleEffect(scene, scene.player.x, scene.player.y, 0x8800ff);
+      
+      // Add log message
+      addToLog(scene, "Used Dungeon Key");
+      
+      // Transition to dungeon scene with fade effect
+      scene.cameras.main.fadeOut(500);
+      scene.time.delayedCall(500, () => {
+        // Start the DungeonScene and pass current inventory and player stats
+        scene.scene.start("DungeonScene", {
+          inventory: scene.localInventory,
+          playerStats: scene.playerStats,
+          returnScene: scene.currentZone
+        });
+      });
+    });
+  } else {
+    showDialog(scene, "You need a Dungeon Key to enter. These can be found while exploring the Outer Grasslands.\n(Press SPACE to continue)");
+    
+    scene.input.keyboard.once("keydown-SPACE", () => {
+      hideDialog(scene);
+    });
   }
 }
 
@@ -2733,6 +2489,10 @@ function createScene() {
     console.log("Defaulting zone to Village with camping materials.");
   }
 
+  // For testing purposes, add a dungeon key to inventory
+  // Remove this line in production
+  this.localInventory.push({ name: "Dungeon Key", quantity: 1 });
+
   // Initialize narrative screen
   this.narrativeScreen = SCREEN_NONE;
 
@@ -2908,51 +2668,9 @@ function createScene() {
       });
     }
 
-    // Enhanced battle area with visual indicator
-    const battleBox = this.add.rectangle(300 * bgScale, 200 * bgScale, 50 * bgScale, 50 * bgScale, 0xff0000, 0.3);
-    battleBox.setOrigin(0, 0);
-    battleBox.setStrokeStyle(2, 0xffffff);
-    this.physics.add.existing(battleBox, true);
-    battleBox.body.enable = false;
-    battleBox.setInteractive();
-    battleBox.name = "battle_mode";
+      
+        
     
-    // Add battle icon
-    const battleIcon = this.add.text(
-      battleBox.x + battleBox.width / 2,
-      battleBox.y + battleBox.height / 2,
-      "⚔️",
-      { font: "24px Arial" }
-    ).setOrigin(0.5).setDepth(901);
-    
-    // Add battle label
-    const battleLabel = this.add.text(
-      battleBox.x + battleBox.width / 2,
-      battleBox.y + battleBox.height + 10,
-      "Training Arena",
-      {
-        font: "14px Arial",
-        fill: "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 3
-      }
-    ).setOrigin(0.5, 0).setDepth(901);
-    
-    // Pulsing animation
-    this.tweens.add({
-      targets: [battleBox, battleIcon],
-      alpha: { from: 0.7, to: 1 },
-      duration: 1200,
-      yoyo: true,
-      repeat: -1
-    });
-    
-    battleBox.on("pointerdown", () => {
-      console.log("Clicked on battle box");
-      handleVillageContractInteraction(this, battleBox);
-    });
-    
-    this.interactionObjects.add(battleBox);
   } else {
     // Non-village zone setup
     if (mapData && mapData.layers) {
@@ -3061,14 +2779,58 @@ function createScene() {
         }
       });
     }
+    
+    // If in Outer Grasslands, add a dungeon entrance
+    if (zoneData.name === "Outer Grasslands") {
+      // Create dungeon entrance at the correct position from map file (scaled to match game)
+      const dungeonX = 2066.37 * bgScale;
+      const dungeonY = 1893.89 * bgScale;
+      
+      // Create a visible marker for the dungeon entrance
+      const dungeonMarker = this.add.circle(dungeonX, dungeonY, 15, 0x440044, 0.8);
+      dungeonMarker.setStrokeStyle(2, 0xaa00aa, 1);
+      dungeonMarker.setDepth(900);
+      
+      // Add glow effect
+      this.tweens.add({
+        targets: dungeonMarker,
+        alpha: { from: 0.6, to: 1 },
+        duration: 1500,
+        yoyo: true,
+        repeat: -1
+      });
+      
+      // Add label
+      const dungeonLabel = this.add.text(dungeonX, dungeonY - 25, "Ancient Dungeon", {
+        font: "14px Arial",
+        fill: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 3
+      }).setOrigin(0.5).setDepth(900);
+      
+      // Make it interactive
+      dungeonMarker.setInteractive({ useHandCursor: true });
+      dungeonMarker.name = "dungeon_entrance";
+      dungeonMarker.on("pointerdown", () => {
+        handleVillageContractInteraction(this, dungeonMarker);
+      });
+      
+      // Store reference to dungeon marker directly instead of using a group
+      this.dungeonMarker = dungeonMarker;
+      
+      // Create a container to hold the dungeon marker elements for proper depth management
+      const dungeonContainer = this.add.container(0, 0);
+      dungeonContainer.add([dungeonMarker, dungeonLabel]);
+      dungeonContainer.setDepth(900);
+    }
   }
 
   // Improved night overlay with stars
   this.nightOverlay = this.add.rectangle(
-    this.game.config.width / 2,
-    this.game.config.height / 2,
-    this.game.config.width,
-    this.game.config.height,
+    this.cameras.main.width / 2,
+    this.cameras.main.height / 2,
+    this.cameras.main.width,
+    this.cameras.main.height,
     0x000033,
     0.6
   )
@@ -3080,8 +2842,8 @@ function createScene() {
   this.stars = [];
   for (let i = 0; i < 50; i++) {
     const star = this.add.circle(
-      Phaser.Math.Between(0, this.game.config.width),
-      Phaser.Math.Between(0, this.game.config.height / 2),
+      Phaser.Math.Between(0, this.cameras.main.width),
+      Phaser.Math.Between(0, this.cameras.main.height / 2),
       Phaser.Math.Between(1, 2),
       0xffffff,
       1
@@ -3337,8 +3099,8 @@ function createScene() {
   const cam = this.cameras.main;
   const visibleWidth = cam.width / cam.zoom;
   const visibleHeight = cam.height / cam.zoom;
-  const frameX = (this.game.config.width - visibleWidth) / 2;
-  const frameY = (this.game.config.height - visibleHeight) / 2;
+  const frameX = (this.cameras.main.width - visibleWidth) / 2;
+  const frameY = (this.cameras.main.height - visibleHeight) / 2;
   this.frameRect = new Phaser.Geom.Rectangle(frameX, frameY, visibleWidth, visibleHeight);
   
   // Create stylish frame
@@ -4157,6 +3919,15 @@ class MenuScene extends Phaser.Scene {
   }
 }
 
+// CampingScene is already loaded from the campingScene.js file in the HTML
+// No need to declare it again, just reference it
+
+// FishingScene is already loaded from the fishingScene.js file in the HTML
+// No need to declare it again, just reference it
+
+// DungeonScene is now loaded from the dungeonScene.js file in the HTML
+// No need to define it here, just reference it
+
 // Game configuration
 const config = {
   type: Phaser.AUTO,
@@ -4180,10 +3951,13 @@ const config = {
     maxWidth: 800,
     maxHeight: 600
   },
-  scene: [MenuScene, MainGameScene, CampingScene, FishingScene]
+  scene: [MenuScene, MainGameScene, CampingScene, FishingScene, DungeonScene]
 };
 
-const game = new Phaser.Game(config);
+// Wait for document to be fully loaded before creating the game
+window.onload = function() {
+  const game = new Phaser.Game(config);
+};
 
 function initiateCampingSetup(scene) {
   console.log("Initiating camping setup...");
@@ -4290,7 +4064,3 @@ function initiateCampingSetup(scene) {
   
   scene.input.keyboard.on('keydown-ESC', escHandler);
 }
-
-
-
-// Game configuration

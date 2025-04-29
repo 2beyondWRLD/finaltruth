@@ -41,12 +41,12 @@
     <!-- Load all scene files first -->
     <script src="fishingScene.js"></script>
     <script src="campingScene.js"></script>
+    <script src="dungeonScene.js"></script>
     <script src="main.js"></script>
     <!-- Initialize game after all scenes are loaded -->
     <script>
-        window.addEventListener('load', function() {
-            const game = new Phaser.Game(GAME_CONFIG);
-        });
+        // Remove the game initialization here since it's already in main.js
+        // const game = new Phaser.Game(config);
     </script>
 </body>
 </html>
