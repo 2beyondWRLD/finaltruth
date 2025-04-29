@@ -14,6 +14,19 @@
         "canDeposit": true
       },
       {
+        "name": "Dungeon Key",
+        "type": "Key Item",
+        "statEffects": {},
+        "value": 100,
+        "rarity": "Rare",
+        "weight": 0.1,
+        "stackLimit": 5,
+        "isStackable": true,
+        "isEquippable": false,
+        "canDeposit": false,
+        "description": "A rusty key that unlocks an ancient dungeon. Consumed upon use."
+      },
+      {
         "name": "Lint",
         "type": "Collectable",
         "statEffects": {},
