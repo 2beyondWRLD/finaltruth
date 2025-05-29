@@ -4,9 +4,7 @@
  "layers":[
         {
          "id":4,
-         "image":"..\/..\/..\/..\/gameboy-scavenger\/frontend\/assets\/backgrounds\/outerGrasslands.png",
-         "imageheight":2400,
-         "imagewidth":2400,
+         "image":"..\/..\/..\/..\/..\/..\/Ubuntu-20.04\/home\/redbeard\/gameboy-scavenger\/frontend\/assets\/backgrounds\/outerGrasslands.png",
          "name":"outergrasslands",
          "opacity":1,
          "type":"imagelayer",
@@ -17,18 +15,62 @@
         {
          "draworder":"topdown",
          "id":7,
-         "name":"dungeon",
+         "name":"dungeonEntry",
          "objects":[
                 {
-                 "height":60.8750792644262,
+                 "height":74.3034055727555,
                  "id":191,
                  "name":"",
                  "rotation":0,
                  "type":"",
                  "visible":true,
-                 "width":54.1111815683789,
-                 "x":2066.37074614246,
-                 "y":1893.89135489326
+                 "width":81.058260624824,
+                 "x":1925.13368983957,
+                 "y":1614.41035744441
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":8,
+         "name":"ShadyGrove",
+         "objects":[
+                {
+                 "height":175.626231353786,
+                 "id":192,
+                 "name":"",
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":216.155361666198,
+                 "x":209.400506614129,
+                 "y":2229.10216718266
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":9,
+         "name":"VillageCommons",
+         "objects":[
+                {
+                 "height":121.587390937236,
+                 "id":193,
+                 "name":"",
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":702.504925415142,
+                 "x":-67.5485505206867,
+                 "y":-6.75485505206867
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -863,9 +905,7 @@
         }, 
         {
          "id":5,
-         "image":"..\/..\/..\/..\/gameboy-scavenger\/frontend\/assets\/foregrounds\/outerGrasslandsForeground.png",
-         "imageheight":2400,
-         "imagewidth":2400,
+         "image":"..\/..\/..\/..\/..\/..\/Ubuntu-20.04\/home\/redbeard\/gameboy-scavenger\/frontend\/assets\/foregrounds\/outerGrasslandsForeground.png",
          "name":"outerGrasslandsForeground",
          "opacity":1,
          "type":"imagelayer",
@@ -873,11 +913,11 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":8,
- "nextobjectid":192,
+ "nextlayerid":10,
+ "nextobjectid":194,
  "orientation":"orthogonal",
  "renderorder":"right-down",
- "tiledversion":"1.11.1",
+ "tiledversion":"1.11.2",
  "tileheight":16,
  "tilesets":[],
  "tilewidth":16,

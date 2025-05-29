@@ -5,11 +5,55 @@
         {
          "id":7,
          "image":"..\/backgrounds\/shadyGrove.png",
-         "imageheight":2561,
+         "imageheight":2560,
          "imagewidth":4160,
          "name":"shadyGrovebackground",
          "opacity":1,
          "type":"imagelayer",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":9,
+         "name":"OuterGrasslands",
+         "objects":[
+                {
+                 "height":109.51871657754,
+                 "id":394,
+                 "name":"",
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":197.133689839572,
+                 "x":186.181818181818,
+                 "y":-10.951871657754
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":10,
+         "name":"AridDesert",
+         "objects":[
+                {
+                 "height":109.51871657754,
+                 "id":396,
+                 "name":"",
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":197.133689839572,
+                 "x":1752.29946524064,
+                 "y":2464.17112299465
+                }],
+         "opacity":1,
+         "type":"objectgroup",
          "visible":true,
          "x":0,
          "y":0
@@ -3076,8 +3120,6 @@
         {
          "id":8,
          "image":"..\/foregrounds\/shadyGroveforeground.png",
-         "imageheight":2561,
-         "imagewidth":4160,
          "name":"shadyGroveforeground",
          "opacity":1,
          "type":"imagelayer",
@@ -3085,8 +3127,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":9,
- "nextobjectid":394,
+ "nextlayerid":11,
+ "nextobjectid":397,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.11.2",

@@ -24,7 +24,7 @@
         "outcomes": [
           "You only find a broken tool. Nothing changes.",
           "In your haste, you trip and lose a bit of stamina. (-7 Stamina)",
-          "Observing the area reveals a path to Shady Grove. (Travel to Shady Grove)"
+          "Observing carefully reveals a rare trinket. (+Loot)"
         ]
       },
       {
@@ -153,7 +153,7 @@
         ],
         "outcomes": [
           "The shelter keeps you safe and refreshed. (+7 Stamina)",
-          "You feel the storm’s chill sap your energy. (-7 Thirst, -7 Stamina)",
+          "You feel the storm's chill sap your energy. (-7 Thirst, -7 Stamina)",
           "Watching the storm leaves you both awed and slightly drained. (-7 Stamina)"
         ]
       },
@@ -161,7 +161,7 @@
         "prompt": "The grasslands reveal a shallow, sparkling pool that reflects the clear sky.",
         "options": [
           "Drink from the pool.",
-          "Search the pool’s edge for items.",
+          "Search the pool's edge for items.",
           "Ignore the pool and continue your journey."
         ],
         "outcomes": [
@@ -205,7 +205,7 @@
         ],
         "outcomes": [
           "The investigation uncovers a hidden herb patch. (+5 Health, +7 Hunger)",
-          "Your careful collection yields a clue to the next zone. (Travel to Shady Grove)",
+          "Your careful collection yields rare minerals. (+Loot)",
           "You pass by without gain and lose a bit of stamina. (-7 Stamina)"
         ]
       },
@@ -217,7 +217,7 @@
           "Decide not to risk it and stay on the main path."
         ],
         "outcomes": [
-          "The trail leads to a path toward Shady Grove. (Travel to Shady Grove)",
+          "The trail leads to a hidden cache of supplies. (+Loot)",
           "The clues in the twigs boost your confidence. (+7 Stamina)",
           "Staying on the main path leaves you with minor fatigue. (-7 Stamina)"
         ]
@@ -243,7 +243,7 @@
           "Venture off the beaten path."
         ],
         "outcomes": [
-          "Approaching the shimmer reveals a route to Shady Grove. (Travel to Shady Grove)",
+          "Approaching the shimmer reveals a rare artifact. (+Loot)",
           "The rest gives you a compound boost. (+7 Thirst, +7 Stamina)",
           "Venting your curiosity drains your energy. (-7 Stamina)"
         ]
@@ -451,7 +451,7 @@
           "Search the area around the pond."
         ],
         "outcomes": [
-          "You decide to try fishing. (Transition to FishingScene)",
+          "You spot some fish but can't catch them without proper gear. (+7 Stamina)",
           "The water refreshes you. (+7 Thirst)",
           "You find some useful herbs nearby. (+5 Health)"
         ]
@@ -481,7 +481,7 @@
         "outcomes": [
           "The path leads to a secret glen with supplies. (+Loot)",
           "You uncover medicinal herbs. (+7 Health, +7 Thirst)",
-          "Observing from the edge reveals a path to Arid Desert. (Travel to Arid Desert)"
+          "Observing from the edge reveals strange patterns in the moss. (+7 Stamina)"
         ]
       },
       {
@@ -576,14 +576,14 @@
         ]
       },
       {
-        "prompt": "An ancient stone marked with cryptic symbols lies half-buried at the grove’s edge.",
+        "prompt": "An ancient stone marked with cryptic symbols lies half-buried at the grove's edge.",
         "options": [
           "Decipher the symbols.",
           "Search around the stone for items.",
           "Ignore the stone and keep moving."
         ],
         "outcomes": [
-          "The symbols reveal a hidden passage. (Travel to Arid Desert)",
+          "The symbols reveal ancient knowledge. (+7 Health, +7 Stamina)",
           "You find an old amulet nearby. (+Loot)",
           "Ignoring the stone costs you a chance to learn more. (-7 Stamina)"
         ]
@@ -693,7 +693,7 @@
         ]
       },
       {
-        "prompt": "The grove’s undergrowth rustles with unseen activity as night begins to fall.",
+        "prompt": "The grove's undergrowth rustles with unseen activity as night begins to fall.",
         "options": [
           "Investigate the rustling.",
           "Light a small fire for safety.",
@@ -791,7 +791,7 @@
           "Explore the surroundings."
         ],
         "outcomes": [
-          "You take out your fishing gear. (Transition to FishingScene)",
+          "You see fish swimming but lack the proper equipment to catch them. (+Loot)",
           "The water is cool and revitalizing. (+7 Thirst, +7 Stamina)",
           "You discover a hidden cache near the pond. (+Loot)"
         ]
@@ -806,8 +806,8 @@
           "Push forward despite the heat."
         ],
         "outcomes": [
-          "You discover an oasis with a small pond (Transition to FishingScene)",
-          "You spot a path leading back to Outer Grasslands. (Travel to Outer Grasslands)",
+          "You discover a small water source. (+10 Thirst, +5 Health)",
+          "The short rest rejuvenates you slightly. (+7 Stamina)",
           "Pushing forward drains your energy severely. (-15 Stamina)"
         ]
       },
@@ -851,7 +851,7 @@
         ]
       },
       {
-        "prompt": "The desert’s heat intensifies as you notice an unusual glint on a dune.",
+        "prompt": "The desert's heat intensifies as you notice an unusual glint on a dune.",
         "options": [
           "Investigate the glint.",
           "Shun the distraction and move on.",
@@ -955,14 +955,14 @@
         ]
       },
       {
-        "prompt": "A sudden chill in the air hints at an unexpected change in the desert’s mood.",
+        "prompt": "A sudden chill in the air hints at an unexpected change in the desert's mood.",
         "options": [
           "Wrap yourself in your cloak.",
           "Search for any shelter immediately.",
           "Ignore the chill and continue."
         ],
         "outcomes": [
-          "Wrapping up minimizes the cold’s effect. (+7 Stamina)",
+          "Wrapping up minimizes the cold's effect. (+7 Stamina)",
           "Shelter is found and you recover slightly. (+7 Health)",
           "Ignoring the chill leaves you with a mild loss. (-7 Health)"
         ]
@@ -981,7 +981,7 @@
         ]
       },
       {
-        "prompt": "A lone, withered tree stands as a testament to the desert’s harshness.",
+        "prompt": "A lone, withered tree stands as a testament to the desert's harshness.",
         "options": [
           "Search around the tree for signs of life.",
           "Rest in its sparse shade.",
@@ -1015,7 +1015,7 @@
         ],
         "outcomes": [
           "Meditation offers a compound boost. (+7 Health, +7 Stamina)",
-          "Determination alone isn’t enough; you feel the drain. (-15 Stamina)",
+          "Determination alone isn't enough; you feel the drain. (-15 Stamina)",
           "Checking your supplies yields no real gain. Nothing changes."
         ]
       },
@@ -1105,7 +1105,7 @@
           "Search for any hidden treasures."
         ],
         "outcomes": [
-          "You cast your line into the water. (transition to fishing scene)",
+          "The cool water soothes your hands as you try to catch fish. (+10 Stamina)",
           "The oasis water restores your thirst. (+7 Thirst)",
           "You find an ancient relic buried in the sand. (+Loot)"
         ]

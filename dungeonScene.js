@@ -10,6 +10,8 @@
  * - Added WASD controls for player movement alongside arrow keys
  * - Adjusted collision boxes for better movement
  * - Fixed player animations to match main game
+ * - Added simple text health display at top of screen
+ * - Guaranteed rare weapon drop from final treasure chest
  */
 
 // Define the DungeonScene class for direct loading in HTML
@@ -22,8 +24,7 @@ class DungeonScene extends Phaser.Scene {
         this.colliders = null;
         this.playerHealth = 100;
         this.playerMaxHealth = 100;
-        this.healthBar = null;
-        this.uiContainer = null;
+        this.healthText = null; // Simple health text display
         this.lootBox = null;
         this.lootGlow = null;
         this.hasLootedDungeon = false;
@@ -33,6 +34,9 @@ class DungeonScene extends Phaser.Scene {
         this.inventory = [];
         this.playerStats = null;
         this.returnScene = null;
+        
+        // Initialize log messages system (matches main game)
+        this.logMessages = [];
     }
 
     preload() {
@@ -69,6 +73,9 @@ class DungeonScene extends Phaser.Scene {
         this.playerHealth = this.playerStats.health;
         this.playerMaxHealth = this.playerStats.maxHealth || 100;
 
+        // Initialize log messages system (matches main game)
+        this.logMessages = [];
+        
         // Initialize the dungeon map
         const map = this.make.tilemap({ key: 'dungeon' });
         
@@ -93,12 +100,12 @@ class DungeonScene extends Phaser.Scene {
         this.player.setCollideWorldBounds(true);
         // Scale player to match exactly with outer grasslands
         this.player.setScale(2.5);
-        // Set smaller collision box for better movement
+        // Set slightly larger collision box for better collision detection
         this.player.body.setSize(24, 24);
-        this.player.body.setOffset(12, 20);
-        // Initialize attack properties
+        this.player.body.setOffset(12, 16);
+        
+        // Initialize attack properties - done differently than in previous dungeonScene implementation
         this.player.isAttacking = false;
-        this.player.attackCooldown = 0;
         
         // Set initial animation
         this.player.anims.play('idle-down', true);
@@ -179,7 +186,29 @@ class DungeonScene extends Phaser.Scene {
             repeat: 0
         });
         
-        // Animation complete listener
+        // Monster animations - identical to Scavenger Mode
+        this.anims.create({
+            key: "monster_idle",
+            frames: this.anims.generateFrameNumbers("hickory_idle", { start: 0, end: 5 }),
+            frameRate: 10,
+            repeat: -1
+        });
+
+        this.anims.create({
+            key: "monster_walk",
+            frames: this.anims.generateFrameNumbers("hickory_walk", { start: 0, end: 5 }),
+            frameRate: 10,
+            repeat: -1
+        });
+
+        this.anims.create({
+            key: "monster_attack",
+            frames: this.anims.generateFrameNumbers("hickory_attack", { start: 0, end: 5 }),
+            frameRate: 10,
+            repeat: -1
+        });
+        
+        // Animation complete listener - identical to Scavenger Mode
         this.player.on('animationcomplete', (animation) => {
             if (animation.key.startsWith('attack-')) {
                 this.player.isAttacking = false;
@@ -188,13 +217,52 @@ class DungeonScene extends Phaser.Scene {
         
         // Set up camera to follow player with bounds matching the dungeon map
         this.cameras.main.setBounds(0, 0, 1024, 1024);
-        this.cameras.main.startFollow(this.player);
+        this.cameras.main.startFollow(this.player, true, 0.9, 0.9);
+        this.cameras.main.setZoom(0.9); // Zoom out more to see more of the dungeon
         
         // Set the physics world bounds to match the dungeon dimensions
         this.physics.world.setBounds(0, 0, 1024, 1024);
         
+        // Ensure camera fade effect for smooth transitions
+        this.cameras.main.fadeIn(1000);
+        
         // Add foreground image to be displayed on top of player
         this.add.image(0, 0, 'dungeonForeground').setOrigin(0, 0).setDepth(10);
+        
+        // ULTRA-SIMPLE HUD - only essential elements
+        // 1. Health bar - very simple at bottom left
+        this.healthBar = this.add.graphics();
+        this.healthBar.setScrollFactor(0);
+        this.healthBar.setDepth(1000);
+        
+        // 2. Mini-map - just a tiny dot in the top right
+        const mapSize = 60;
+        const mapX = this.game.config.width - mapSize - 5;
+        const mapY = 5;
+        
+        // Simple minimap background
+        this.minimapBg = this.add.rectangle(mapX + mapSize/2, mapY + mapSize/2, mapSize, mapSize, 0x000000, 0.5);
+        this.minimapBg.setStrokeStyle(1, 0xffffff, 0.7);
+        this.minimapBg.setScrollFactor(0);
+        this.minimapBg.setDepth(1000);
+        
+        // Player dot on minimap
+        this.miniMapPlayer = this.add.circle(0, 0, 2, 0x00ff00);
+        this.miniMapPlayer.setScrollFactor(0);
+        this.miniMapPlayer.setDepth(1001);
+        
+        // Add log text display in top right corner (matches main game)
+        this.logText = this.add.text(this.cameras.main.width - 10, 80, "Dungeon Log", {
+            font: "12px Arial",
+            fill: "#ff9900",
+            stroke: "#000000",
+            strokeThickness: 2,
+            align: "right",
+            wordWrap: { width: 200 }
+        }).setOrigin(1, 0).setScrollFactor(0).setDepth(1000);
+        
+        // Initialize HUD
+        this.updateDungeonHUD();
         
         // Set up collisions between player and walls
         this.physics.add.collider(this.player, this.colliders);
@@ -245,40 +313,26 @@ class DungeonScene extends Phaser.Scene {
         // Set up monster collisions
         this.physics.add.collider(this.monsters, this.colliders);
         this.physics.add.collider(this.monsters, this.monsters);
-        this.physics.add.overlap(this.player, this.monsters, this.monsterAttack, null, this);
-        
-        // Create UI elements
-        this.createUI();
-        
-        // Add mini-map for dungeon navigation
-        this.createMinimap();
-        
-        // Modify the exit button to return to the proper scene
-        const exitButton = this.add.text(10, 10, 'Exit Dungeon', {
-            font: '16px Arial',
-            fill: '#ffffff',
-            backgroundColor: '#333333',
-            padding: { x: 10, y: 5 }
-        }).setScrollFactor(0).setDepth(100).setInteractive();
-        
-        exitButton.on('pointerdown', () => {
-            this.exitDungeon();
-        });
     }
     
     update() {
         // Reset player velocity
         this.player.setVelocity(0);
         
-        // Handle attack with spacebar
-        if (Phaser.Input.Keyboard.JustDown(this.attackKey) && this.player.attackCooldown <= 0) {
+        // Update HUD with current values
+        this.updateDungeonHUD();
+        
+        // Handle attack with spacebar - match Scavenger Mode (no cooldown check needed as it matches animation)
+        if (Phaser.Input.Keyboard.JustDown(this.attackKey) && !this.player.isAttacking) {
             console.log("Player attacking in dungeon! Direction:", this.lastDirection);
             
             // Set attacking flag to prevent movement during attack
             this.player.isAttacking = true;
-            
-            // Play attack animation based on facing direction
+            this.player.setVelocity(0);
             this.player.anims.play(`attack-${this.lastDirection}`, true);
+            
+            // Camera shake effect for attack (matches main game)
+            this.cameras.main.shake(50, 0.005);
             
             // Visual effect position based on facing direction
             let effectX = this.player.x;
@@ -297,52 +351,51 @@ class DungeonScene extends Phaser.Scene {
             // Create hit effect at effect position
             this.createHitEffect(effectX, effectY);
             
-            // Find monsters in attack range based on direction
-            const attackRange = 120;
-            const verticalTolerance = 50;
+            // Find monsters in attack range based on direction - exactly as in Scavenger Mode
+            const attackRange = 120; // Increased range for better detection
+            const verticalTolerance = 50; // Increased tolerance
             let monstersInRange = [];
             
             if (this.lastDirection === 'right') {
                 monstersInRange = this.monsters.getChildren().filter(monster => {
-                    return monster.x > this.player.x && 
-                           monster.x < this.player.x + attackRange &&
-                           Math.abs(monster.y - this.player.y) < verticalTolerance;
+                    const inRange = monster.x > this.player.x && monster.x < this.player.x + attackRange &&
+                                    Math.abs(monster.y - this.player.y) < verticalTolerance;
+                    return inRange;
                 });
             } else if (this.lastDirection === 'left') {
                 monstersInRange = this.monsters.getChildren().filter(monster => {
-                    return monster.x < this.player.x && 
-                           monster.x > this.player.x - attackRange &&
-                           Math.abs(monster.y - this.player.y) < verticalTolerance;
+                    const inRange = monster.x < this.player.x && monster.x > this.player.x - attackRange &&
+                                    Math.abs(monster.y - this.player.y) < verticalTolerance;
+                    return inRange;
                 });
             } else if (this.lastDirection === 'up') {
                 monstersInRange = this.monsters.getChildren().filter(monster => {
-                    return monster.y < this.player.y && 
-                           monster.y > this.player.y - attackRange &&
-                           Math.abs(monster.x - this.player.x) < verticalTolerance;
+                    const inRange = monster.y < this.player.y && monster.y > this.player.y - attackRange &&
+                                    Math.abs(monster.x - this.player.x) < verticalTolerance;
+                    return inRange;
                 });
             } else if (this.lastDirection === 'down') {
                 monstersInRange = this.monsters.getChildren().filter(monster => {
-                    return monster.y > this.player.y && 
-                           monster.y < this.player.y + attackRange &&
-                           Math.abs(monster.x - this.player.x) < verticalTolerance;
+                    const inRange = monster.y > this.player.y && monster.y < this.player.y + attackRange &&
+                                    Math.abs(monster.x - this.player.x) < verticalTolerance;
+                    return inRange;
                 });
             }
             
+            // Calculate player attack power with level scaling - exactly like Scavenger Mode
+            const baseAttack = 10 + (this.playerStats.level - 1) * 2;
+            const randomFactor = Phaser.Math.Between(-2, 3);
+            const attackPower = baseAttack + randomFactor;
+            
             // Attack each monster in range
             monstersInRange.forEach(monster => {
-                this.attackMonster(monster);
-            });
-            
-            // Set attack cooldown
-            this.player.attackCooldown = 500;
-            this.time.delayedCall(500, () => {
-                this.player.attackCooldown = 0;
+                monster.takeDamage(attackPower);
             });
         }
         
         // Handle player movement with both arrow keys and WASD
-        // Match movement speed to main game (160)
-        const speed = 160;
+        // Match movement speed to Scavenger mode (100 instead of 160)
+        const speed = 100;
         
         // Only allow movement if not attacking
         if (!this.player.isAttacking) {
@@ -397,10 +450,15 @@ class DungeonScene extends Phaser.Scene {
         
         // Update minimap
         this.updateMinimap();
+        
+        // Update player stats if they change
+        if (this.playerStats && this.xpText) {
+            this.xpText.setText(`${this.playerStats.experience || 0}`);
+        }
     }
     
     createMonsters() {
-        // Generate dungeon monsters similar to Scavenger Mode but stronger
+        // Generate dungeon monsters exactly like Scavenger Mode but slightly stronger
         
         // Define spawn locations throughout the dungeon
         const spawnPoints = [
@@ -416,98 +474,228 @@ class DungeonScene extends Phaser.Scene {
             { x: 950, y: 900 }   // Near loot - guard
         ];
         
-        // Calculate monster level based on player level if available
+        // Calculate monster level based on player level if available - match Scavenger Mode
         const playerLevel = this.playerStats && this.playerStats.level ? this.playerStats.level : 1;
-        const monsterLevel = playerLevel + 1; // Slightly tougher than the player
+        
+        // Monsters are slightly tougher than in Scavenger Mode
+        const difficultyMultiplier = 1.1 + (playerLevel - 1) * 0.2; // Slightly higher than Scavenger's 1.0
         
         spawnPoints.forEach((point, i) => {
             // Add some randomness to spawn position
             const x = point.x + Phaser.Math.Between(-30, 30);
             const y = point.y + Phaser.Math.Between(-30, 30);
             
-            // Create monster based on ScavengerMode monster class
-            const monster = this.monsters.create(x, y, 'hickory_idle');
-            monster.type = 'dungeon_hickory'; // Special type for dungeon monsters
+            // Create monster just like in Scavenger Mode
+            const monster = this.physics.add.sprite(x, y, "hickory_idle");
+            this.monsters.add(monster);
             
-            // Scale monster stats with player level (stronger than Scavenger Mode)
-            const difficultyMultiplier = 1.1 + (playerLevel - 1) * 0.15;
+            // Set properties identical to Scavenger Mode with slight adjustment for difficulty
+            monster.setCollideWorldBounds(true);
+            monster.setDepth(2000);
             
-            monster.health = Math.floor(50 * difficultyMultiplier);
-            monster.maxHealth = monster.health;
-            monster.damage = Math.floor(8 * difficultyMultiplier);
-            monster.speed = 70 + (playerLevel - 1) * 5;
-            monster.attackRange = 50;
-            monster.detectionRange = 200;
-            monster.changeDirectionInterval = 2000;
-            monster.lastDirectionChange = 0;
+            // Improve collision handling - add proper body size
+            monster.body.setSize(28, 28);
+            monster.body.setOffset(2, 4);
             
-            // Scale monster to match player
-            monster.setScale(2.5);
+            monster.currentState = "idle";
             
-            // Add level indicator to monster
-            const levelText = this.add.text(monster.x, monster.y - 30, `Lv.${monsterLevel}`, {
+            // Scale monster stats with player level - slightly tougher than Scavenger Mode
+            monster.speed = 50 + (playerLevel - 1) * 5;
+            monster.attackRange = 40; // Same as Scavenger Mode
+            monster.detectionRange = 200 + (playerLevel - 1) * 10;
+            monster.attackCooldown = Math.max(800, 1000 - (playerLevel - 1) * 50); // Same as Scavenger Mode
+            monster.lastAttackTime = 0;
+            monster.maxHealth = Math.floor(80 * difficultyMultiplier);
+            monster.health = monster.maxHealth;
+            monster.damage = 5 + Math.floor((playerLevel - 1) * 1.5); // Slightly more damage than Scavenger Mode
+            
+            // Create health bar - identical to Scavenger Mode
+            monster.healthBar = this.add.graphics();
+            monster.healthBar.setDepth(2001); // Above monster
+            
+            // Add monster name/level display - identical to Scavenger Mode
+            monster.levelText = this.add.text(monster.x, monster.y - 30, `Monster Lv.${playerLevel}`, {
                 font: '10px Arial',
                 fill: '#ffffff',
                 stroke: '#000000',
                 strokeThickness: 2
-            }).setOrigin(0.5).setDepth(101);
+            }).setOrigin(0.5).setDepth(2001);
             
-            // Link the level text to the monster for updates
-            monster.levelText = levelText;
+            // Scale monster to match player
+            monster.setScale(2.5);
             
-            // Create unique animation key for each monster
-            const animKey = 'monster_move_' + i;
-            
-            // Use hickory animations from Scavenger Mode
-            if (!this.anims.exists(animKey)) {
-                this.anims.create({
-                    key: animKey,
-                    // Use different hickory sprite based on position (for variety)
-                    frames: this.anims.generateFrameNumbers(
-                        i < 3 ? 'hickory_idle' : (i < 6 ? 'hickory_walk' : 'hickory_attack'), 
-                        { start: 0, end: 5 }
-                    ),
-                    frameRate: 8,
-                    repeat: -1
-                });
-            }
-            
-            monster.anims.play(animKey, true);
-            monster.setBounce(1);
-            monster.setCollideWorldBounds(true);
-            monster.setVelocity(Phaser.Math.Between(-70, 70), Phaser.Math.Between(-70, 70));
-            
-            // Create a small health bar for the monster
+            // Monster health bar update method - identical to Scavenger Mode
             monster.updateHealthBar = function() {
+                if (!this.healthBar) return;
+                
+                this.healthBar.clear();
+                const barWidth = 30; // Width of the health bar
+                const barHeight = 5; // Height of the health bar
+                const healthRatio = this.health / this.maxHealth;
+                
+                // Background (red)
+                this.healthBar.fillStyle(0xff0000);
+                this.healthBar.fillRect(this.x - barWidth / 2, this.y - 20, barWidth, barHeight);
+                
+                // Fill (green portion)
+                this.healthBar.fillStyle(0x00ff00); // Green
+                this.healthBar.fillRect(this.x - barWidth / 2, this.y - 20, barWidth * healthRatio, barHeight);
+                
+                // Outline
+                this.healthBar.lineStyle(1, 0xffffff); // White border
+                this.healthBar.strokeRect(this.x - barWidth / 2, this.y - 20, barWidth, barHeight);
+                
+                // Update level text position
                 if (this.levelText) {
                     this.levelText.setPosition(this.x, this.y - 30);
                 }
             };
             
-            // Override takeDamage method
+            // Set up identical animations as Scavenger Mode
+            monster.anims.play("monster_idle", true);
+            
+            // The takeDamage method - identical to Scavenger Mode
             monster.takeDamage = (damage) => {
                 monster.health -= damage;
+                console.log(`Monster took ${damage} damage, health now: ${monster.health}`);
                 
-                // Update monster health bar and check if defeated
-                monster.updateHealthBar();
+                // Show damage number - use createFloatingText method for consistency
+                this.showDamageText(monster.x, monster.y - 20, `-${damage}`, 0xff0000);
                 
-                // Check if monster is defeated
                 if (monster.health <= 0) {
-                    // Remove level text when monster dies
-                    if (monster.levelText) {
-                        monster.levelText.destroy();
-                    }
-                    
-                    // Create death animation
+                    // Death effect
                     this.createDeathEffect(monster.x, monster.y);
                     
-                    // Drop loot
-                    this.dropLoot(monster.x, monster.y, monster.type);
+                    // Award experience
+                    const expGain = 10 + Math.floor(Math.random() * 5);
+                    if (this.playerStats) {
+                        this.playerStats.experience = (this.playerStats.experience || 0) + expGain;
+                    }
+                    this.showDamageText(monster.x, monster.y - 40, `+${expGain} EXP`, 0x00ffff);
                     
-                    // Remove monster
-                    this.monsters.remove(monster, true, true);
+                    // Chance for better loot in dungeon (40% just like Scavenger Mode but better items)
+                    if (Math.random() < 0.4) {
+                        const loot = this.getRandomDungeonLoot();
+                        if (loot) {
+                            // Add to inventory
+                            const existingItem = this.inventory.find(item => item.name === loot);
+                            if (existingItem) {
+                                existingItem.quantity += 1;
+                            } else {
+                                this.inventory.push({ name: loot, quantity: 1 });
+                            }
+                            
+                            // Log the monster loot
+                            this.addToLog(`Monster dropped: ${loot}`);
+                            
+                            // Show floating text
+                            this.showDamageText(monster.x, monster.y - 60, `+${loot}`, 0xffff00);
+                        }
+                    }
+                    
+                    // Clean up
+                    if (monster.healthBar) monster.healthBar.destroy();
+                    if (monster.levelText) monster.levelText.destroy();
+                    monster.destroy();
+                    console.log("Monster defeated!");
+                } else {
+                    // Visual feedback
+                    monster.setTint(0xff0000);
+                    this.time.delayedCall(100, () => {
+                        monster.clearTint();
+                    });
+                    monster.updateHealthBar(); // Immediate update for feedback
                 }
             };
+            
+            // The attack method - identical to Scavenger Mode
+            monster.attack = (player) => {
+                if (this.playerHealth > 0) {
+                    // Calculate damage with defense reduction
+                    const defense = this.playerStats && this.playerStats.defense ? this.playerStats.defense : 5;
+                    const damage = Math.max(1, monster.damage - Math.floor(defense * 0.3));
+                    
+                    // Apply damage
+                    this.playerHealth = Math.max(this.playerHealth - damage, 0);
+                    
+                    // Update health display
+                    this.updateDungeonHUD();
+                    
+                    // Visual feedback
+                    player.setTint(0xff0000);
+                    this.time.delayedCall(100, () => player.clearTint());
+                    this.cameras.main.shake(100, 0.005 * damage);
+                    
+                    // Floating damage text
+                    this.showDamageText(player.x, player.y - 20, `-${damage}`, 0xff0000);
+                    
+                    // Check if player is dead
+                    if (this.playerHealth <= 0) {
+                        this.playerDied();
+                    }
+                }
+            };
+        });
+    }
+    
+    // Helper method to get random dungeon loot (better than Scavenger Mode but similar style)
+    getRandomDungeonLoot() {
+        // Get player level for loot scaling
+        const playerLevel = this.playerStats && this.playerStats.level ? this.playerStats.level : 1;
+        
+        // Higher chance of rare items in dungeon
+        const rarityRoll = Math.random();
+        
+        // Dungeon-specific loot table
+        const commonItems = ["Cloth", "Stick", "Stone", "Iron Ore", "Herbs"];
+        const uncommonItems = ["Leather", "Copper Ore", "Thread", "Wood", "Water"];
+        const rareItems = ["Fire Crystal", "Steel Ingot", "Poisonous Berries", "Vines"];
+        const epicItems = ["Ancient Relic", "Mystic Gem", "Dragon Scale", "Shadow Essence"];
+        
+        // 10% chance for epic items if player level is high enough
+        if (rarityRoll > 0.9 && playerLevel >= 3) {
+            const index = Math.floor(Math.random() * epicItems.length);
+            return epicItems[index];
+        }
+        // 20% chance for rare items
+        else if (rarityRoll > 0.7) {
+            const index = Math.floor(Math.random() * rareItems.length);
+            return rareItems[index];
+        }
+        // 30% chance for uncommon items
+        else if (rarityRoll > 0.4) {
+            const index = Math.floor(Math.random() * uncommonItems.length);
+            return uncommonItems[index];
+        }
+        // 40% chance for common items
+        else {
+            const index = Math.floor(Math.random() * commonItems.length);
+            return commonItems[index];
+        }
+    }
+    
+    // Helper method to create floating text (mimics createFloatingText from main.js)
+    showDamageText(x, y, text, color = 0xffffff, fontSize = 16) {
+        const floatingText = this.add.text(x, y, text, {
+            fontFamily: 'Arial',
+            fontSize: `${fontSize}px`,
+            color: `#${color.toString(16).padStart(6, '0')}`,
+            stroke: '#000000',
+            strokeThickness: 2,
+            align: 'center'
+        }).setOrigin(0.5);
+        
+        floatingText.setDepth(5000);
+        
+        this.tweens.add({
+            targets: floatingText,
+            y: y - 50,
+            alpha: 0,
+            duration: 1500,
+            ease: 'Power2',
+            onComplete: () => {
+                floatingText.destroy();
+            }
         });
     }
     
@@ -515,87 +703,62 @@ class DungeonScene extends Phaser.Scene {
         const time = this.time.now;
         
         this.monsters.getChildren().forEach(monster => {
+            // Skip if monster is not fully initialized
+            if (!monster.updateHealthBar) return;
+            
             // Update health bar position
             monster.updateHealthBar();
             
-            // Random movement pattern for monsters, similar to scavenger mode
-            // Change direction randomly if it's time
-            if (time > monster.lastDirectionChange + monster.changeDirectionInterval) {
-                // 70% chance to change direction
-                if (Math.random() < 0.7) {
-                    monster.setVelocity(
-                        Phaser.Math.Between(-monster.speed, monster.speed),
-                        Phaser.Math.Between(-monster.speed, monster.speed)
-                    );
+            // Get reference to player
+            const player = this.player;
+            if (!player) return;
+            
+            // Calculate distance to player
+            const distance = Phaser.Math.Distance.Between(monster.x, monster.y, player.x, player.y);
+            
+            // State machine identical to Scavenger Mode
+            if (distance <= monster.attackRange) {
+                if (monster.currentState !== "attacking") {
+                    monster.currentState = "attacking";
+                    monster.anims.play("monster_attack", true);
                 }
-                monster.lastDirectionChange = time;
+                monster.setVelocity(0);
+                if (time > monster.lastAttackTime + monster.attackCooldown) {
+                    monster.attack(player);
+                    monster.lastAttackTime = time;
+                }
+            } else if (distance <= monster.detectionRange) {
+                if (monster.currentState !== "walking") {
+                    monster.currentState = "walking";
+                    monster.anims.play("monster_walk", true);
+                }
+                
+                // Calculate path to player avoiding obstacles
+                const angle = Phaser.Math.Angle.Between(monster.x, monster.y, player.x, player.y);
+                
+                // Set velocity based on angle to player
+                let vx = Math.cos(angle) * monster.speed;
+                let vy = Math.sin(angle) * monster.speed;
+                
+                // Check for collisions with walls before applying velocity
+                monster.setVelocity(vx, vy);
+            } else {
+                if (monster.currentState !== "idle") {
+                    monster.currentState = "idle";
+                    monster.anims.play("monster_idle", true);
+                }
+                monster.setVelocity(0);
             }
             
-            // Basic AI: If player is very close, chase them
-            const distToPlayer = Phaser.Math.Distance.Between(
-                this.player.x, this.player.y, monster.x, monster.y
-            );
-            
-            // Chase the player if within detection range
-            if (distToPlayer < monster.detectionRange) {
-                // Chase player more aggressively when closer
-                const chaseSpeed = distToPlayer < 100 ? monster.speed * 1.2 : monster.speed;
-                
-                // Calculate angle to player
-                const angle = Phaser.Math.Angle.Between(
-                    monster.x, monster.y, this.player.x, this.player.y
-                );
-                
-                const velocityX = Math.cos(angle) * chaseSpeed;
-                const velocityY = Math.sin(angle) * chaseSpeed;
-                
-                monster.setVelocity(velocityX, velocityY);
-            }
-            
-            // Flip the sprite based on movement direction for better visuals
-            if (monster.body.velocity.x < 0) {
-                monster.flipX = true;
-            } else if (monster.body.velocity.x > 0) {
-                monster.flipX = false;
-            }
+            // Update monster flip based on player position (identical to Scavenger Mode)
+            monster.flipX = player.x < monster.x;
         });
-    }
-    
-    monsterAttack(player, monster) {
-        // Only take damage every second to prevent rapid damage
-        if (this.time.now > (monster.lastAttackTime || 0) + 1000) {
-            // Apply damage to player
-            this.playerHealth -= monster.damage;
-            
-            // Update health bar
-            this.updateHealthBar();
-            
-            // Flash player red
-            this.player.setTint(0xff0000);
-            this.time.delayedCall(200, () => {
-                this.player.clearTint();
-            });
-            
-            // Camera shake for impact feedback
-            this.cameras.main.shake(100, 0.005 * monster.damage);
-            
-            // Show damage text
-            this.showDamageText(this.player.x, this.player.y, monster.damage, 0xff0000);
-            
-            // Set last attack time
-            monster.lastAttackTime = this.time.now;
-            
-            // Check if player is dead
-            if (this.playerHealth <= 0) {
-                this.playerDied();
-            }
-        }
     }
     
     playerDied() {
         // Player death logic
         this.playerHealth = 0;
-        this.updateHealthBar();
+        this.updateDungeonHUD();
         
         // Disable player movement
         this.player.setVelocity(0);
@@ -609,197 +772,118 @@ class DungeonScene extends Phaser.Scene {
             { font: '32px Arial', fill: '#ff0000' }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(100);
         
-        // Add retry button
-        const retryButton = this.add.text(
+        // Death message indicating loss of items
+        const deathMessage = this.add.text(
             this.cameras.main.worldView.centerX,
             this.cameras.main.worldView.centerY + 50,
-            'Return to Outer Grasslands',
+            'You have died! You will return to Village Commons.\nAll your items have been lost!',
+            { font: '16px Arial', fill: '#ffffff', align: 'center' }
+        ).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+        
+        // Create continue button
+        const continueButton = this.add.text(
+            this.cameras.main.worldView.centerX,
+            this.cameras.main.worldView.centerY + 100,
+            'Continue',
             { font: '18px Arial', fill: '#ffffff', backgroundColor: '#333333', padding: { x: 10, y: 5 } }
         ).setOrigin(0.5).setScrollFactor(0).setDepth(100).setInteractive();
         
-        retryButton.on('pointerdown', () => {
-            // Reset player health to a minimum value before returning
-            this.playerHealth = Math.max(20, this.playerMaxHealth * 0.2);
+        continueButton.on('pointerdown', () => {
+            // Create new default inventory for Village Commons
+            const defaultInventory = [
+                { name: "Cloth", quantity: 1 },
+                { name: "Stick", quantity: 2 }
+            ];
             
-            // Apply health to player stats
+            // Get Village zone data
+            const villageZone = {
+                name: "Village", 
+                mapKey: "villageCommonsMap", 
+                backgroundKey: "villageCommons", 
+                foregroundKey: ""
+            };
+            
+            // Reset player stats but keep level, experience, and oromozi
             if (this.playerStats) {
-                this.playerStats.health = this.playerHealth;
+                const currentLevel = this.playerStats.level || 1;
+                const currentExp = this.playerStats.experience || 0;
+                const currentOromozi = this.playerStats.oromozi || 0;
+                
+                this.playerStats = {
+                    health: 100,
+                    thirst: 100,
+                    hunger: 100,
+                    stamina: 100,
+                    oromozi: currentOromozi,
+                    currentZone: "Village",
+                    experience: currentExp,
+                    level: currentLevel
+                };
             }
             
-            this.exitDungeon();
-        });
-    }
-    
-    createUI() {
-        // Create UI container (fixed to camera)
-        this.uiContainer = this.add.container(10, 40).setScrollFactor(0).setDepth(100);
-        
-        // Add UI background for better visibility
-        const uiBg = this.add.rectangle(70, 8, 180, 40, 0x000000, 0.5);
-        this.uiContainer.add(uiBg);
-        
-        // Add health label
-        const healthLabel = this.add.text(0, 0, 'Health:', { 
-            font: '16px Arial', 
-            fill: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 2
-        });
-        this.uiContainer.add(healthLabel);
-        
-        // Add health bar background
-        const healthBarBg = this.add.rectangle(70, 8, 100, 16, 0x000000);
-        this.uiContainer.add(healthBarBg);
-        
-        // Add health bar
-        this.healthBar = this.add.rectangle(70, 8, 100, 16, 0xff0000);
-        this.healthBar.setOrigin(0, 0.5);
-        this.uiContainer.add(this.healthBar);
-        
-        // Add health text for exact value
-        this.healthText = this.add.text(180, 8, `${this.playerHealth}/${this.playerMaxHealth}`, { 
-            font: '12px Arial', 
-            fill: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 1
-        }).setOrigin(1, 0.5);
-        this.uiContainer.add(this.healthText);
-        
-        // Update health bar
-        this.updateHealthBar();
-    }
-    
-    createMinimap() {
-        // Create mini-map in the corner
-        const mapSize = 150;
-        const mapX = this.cameras.main.width - mapSize - 20;
-        const mapY = 20;
-        
-        // Create mini-map container that doesn't scroll with the camera
-        this.miniMapContainer = this.add.container(mapX, mapY).setScrollFactor(0).setDepth(100);
-        
-        // Add minimap background and border
-        const minimapBg = this.add.rectangle(0, 0, mapSize, mapSize, 0x000000, 0.7);
-        minimapBg.setStrokeStyle(2, 0xffffff, 1);
-        this.miniMapContainer.add(minimapBg);
-        
-        // Add minimap title
-        this.miniMapTitle = this.add.text(0, -mapSize/2 - 15, "DUNGEON MAP", {
-            font: '14px Arial', 
-            fill: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 2
-        }).setScrollFactor(0).setDepth(100).setOrigin(0.5, 0.5);
-        this.miniMapContainer.add(this.miniMapTitle);
-        
-        // Create player dot for minimap
-        this.miniMapPlayer = this.add.circle(0, 0, 4, 0x00ff00);
-        this.miniMapPlayer.setScrollFactor(0).setDepth(101);
-        this.miniMapContainer.add(this.miniMapPlayer);
-        
-        // Create dots for monsters (will be updated in updateMinimap)
-        this.monsterDots = [];
-        
-        // Create dot for loot chest
-        const lootX = (this.lootBox.x / 1024) * mapSize - mapSize/2;
-        const lootY = (this.lootBox.y / 1024) * mapSize - mapSize/2;
-        const lootDot = this.add.circle(lootX, lootY, 3, 0xffff00);
-        this.miniMapContainer.add(lootDot);
-        
-        // Create walls on minimap
-        if (this.colliders) {
-            this.colliders.getChildren().forEach(wall => {
-                // Scale wall position to minimap size
-                const wallX = (wall.x / 1024) * mapSize - mapSize/2;
-                const wallY = (wall.y / 1024) * mapSize - mapSize/2;
-                
-                // Scale wall dimensions to minimap size (divide by ~20 for proper scale)
-                const wallWidth = (wall.width / 20) * (mapSize / 1024);
-                const wallHeight = (wall.height / 20) * (mapSize / 1024);
-                
-                // Add wall representation to minimap
-                const wallDot = this.add.rectangle(wallX, wallY, wallWidth, wallHeight, 0x444444);
-                this.miniMapContainer.add(wallDot);
+            // Add fade out effect
+            this.cameras.main.fadeOut(1000);
+            
+            // Start the main game scene after fade
+            this.time.delayedCall(1000, () => {
+                this.scene.start('MainGameScene', {
+                    inventory: defaultInventory,
+                    zone: villageZone,
+                    playerStats: this.playerStats
+                });
             });
+        });
+        
+        // Add a visual death effect
+        this.createDeathEffect(this.player.x, this.player.y);
+    }
+    
+    updateDungeonHUD() {
+        // Update health bar - very simple version
+        if (this.healthBar) {
+            const healthPercent = this.playerHealth / this.playerMaxHealth;
+            this.healthBar.clear();
+            
+            // Small health bar at bottom left
+            const barWidth = 100;
+            const barHeight = 8;
+            const barX = 10;
+            const barY = this.game.config.height - 20;
+            
+            // Background
+            this.healthBar.fillStyle(0x000000, 0.5);
+            this.healthBar.fillRect(barX, barY, barWidth, barHeight);
+            
+            // Health portion
+            this.healthBar.fillStyle(0x00ff00, 1);
+            this.healthBar.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+            
+            // Border
+            this.healthBar.lineStyle(1, 0xffffff, 0.8);
+            this.healthBar.strokeRect(barX, barY, barWidth, barHeight);
+        }
+        
+        // Update minimap player position
+        if (this.miniMapPlayer && this.minimapBg) {
+            const mapSize = 60;
+            const mapX = this.game.config.width - mapSize - 5;
+            const mapY = 5;
+            
+            // Calculate scaled position 
+            const playerX = mapX + mapSize/2 + (this.player.x / 1024) * mapSize - mapSize/2;
+            const playerY = mapY + mapSize/2 + (this.player.y / 1024) * mapSize - mapSize/2;
+            
+            // Update player dot position
+            this.miniMapPlayer.setPosition(playerX, playerY);
         }
     }
     
     updateMinimap() {
-        if (!this.miniMapPlayer || !this.player) return;
-        
-        const mapSize = 150;
-        
-        // Update player position on minimap
-        const playerX = (this.player.x / 1024) * mapSize - mapSize/2;
-        const playerY = (this.player.y / 1024) * mapSize - mapSize/2;
-        this.miniMapPlayer.setPosition(playerX, playerY);
-        
-        // Clear existing monster dots
-        this.monsterDots.forEach(dot => dot.destroy());
-        this.monsterDots = [];
-        
-        // Update monster positions on minimap
-        if (this.monsters) {
-            this.monsters.getChildren().forEach(monster => {
-                // Scale monster position to minimap
-                const monsterX = (monster.x / 1024) * mapSize - mapSize/2;
-                const monsterY = (monster.y / 1024) * mapSize - mapSize/2;
-                
-                // Create monster dot with color based on type
-                let color = 0xff0000; // Default red
-                if (monster.type === 'ghost') color = 0xff00ff;
-                if (monster.type === 'bat') color = 0xff8800;
-                
-                const monsterDot = this.add.circle(monsterX, monsterY, 2, color);
-                monsterDot.setScrollFactor(0).setDepth(101);
-                this.miniMapContainer.add(monsterDot);
-                this.monsterDots.push(monsterDot);
-            });
-        }
-    }
-    
-    updateHealthBar() {
-        // Update health bar width
-        const healthPercent = Phaser.Math.Clamp(this.playerHealth / this.playerMaxHealth, 0, 1);
-        this.healthBar.width = 100 * healthPercent;
-        
-        // Update health text
-        if (this.healthText) {
-            this.healthText.setText(`${Math.ceil(this.playerHealth)}/${this.playerMaxHealth}`);
-            
-            // Change color based on health percentage
-            if (healthPercent < 0.3) {
-                this.healthText.setColor('#ff0000');
-            } else if (healthPercent < 0.6) {
-                this.healthText.setColor('#ffff00');
-            } else {
-                this.healthText.setColor('#ffffff');
-            }
-        }
+        // We're using the simplified updateDungeonHUD method for minimap updates now
+        this.updateDungeonHUD();
     }
     
     exitDungeon() {
-        // Add any items collected to main game inventory
-        const dungeonInventory = this.registry.get('inventory') || {};
-        const mainInventory = this.registry.get('mainInventory') || {};
-        
-        // Merge inventories
-        Object.keys(dungeonInventory).forEach(item => {
-            if (mainInventory[item]) {
-                mainInventory[item] += dungeonInventory[item];
-            } else {
-                mainInventory[item] = dungeonInventory[item];
-            }
-        });
-        
-        // Update main inventory
-        this.registry.set('mainInventory', mainInventory);
-        
-        // Add experience to main game
-        const dungeonXP = this.registry.get('playerXP') || 0;
-        const mainXP = this.registry.get('mainXP') || 0;
-        this.registry.set('mainXP', mainXP + dungeonXP);
-        
         // Show transition screen
         const fadeRect = this.add.rectangle(
             0, 0, 
@@ -860,18 +944,48 @@ class DungeonScene extends Phaser.Scene {
                                 this.playerStats.health = this.playerHealth;
                                 console.log("Setting player health to:", this.playerHealth);
                             }
+                            
+                            // Debug log
+                            console.log("Exiting dungeon with inventory:", this.inventory);
 
+                            // Start the main game scene with our data
                             this.scene.start('MainGameScene', {
-                                inventory: mainInventory,
-                                playerXP: mainXP + dungeonXP,
-                                zone: returnZoneData, // Pass the zone data back to main game
-                                playerStats: this.playerStats // Pass updated player stats
+                                inventory: this.inventory,
+                                zone: returnZoneData,
+                                playerStats: this.playerStats
                             });
                         }, 1000);
                     }
                 });
             }
         });
+    }
+    
+    // Function to add messages to the log (matches main game's addToLog function)
+    addToLog(message) {
+        if (!this.logMessages || !this.logText) return;
+        if (!message || typeof message !== 'string') {
+            message = String(message || 'Event occurred');
+        }
+        
+        try {
+            console.log("Dungeon Log update:", message);
+            this.logMessages.push(message);
+            if (this.logMessages.length > 5) {
+                this.logMessages.shift(); // Remove the oldest message
+            }
+            this.logText.setText(this.logMessages.join('\n'));
+            
+            // Add visual highlight to log briefly
+            this.logText.setTint(0xffff00);
+            this.time.delayedCall(1000, () => {
+                if (this.logText && this.logText.clearTint) {
+                    this.logText.clearTint();
+                }
+            });
+        } catch (error) {
+            console.warn("Error updating log:", error);
+        }
     }
     
     collectLoot() {
@@ -893,52 +1007,92 @@ class DungeonScene extends Phaser.Scene {
             const playerLevel = this.playerStats && this.playerStats.level ? this.playerStats.level : 1;
             const gold = Phaser.Math.Between(100 + (playerLevel * 10), 200 + (playerLevel * 20));
             
-            // Get rare and mythic items from loot table
+            // Get loot table and check for the return zone
             const lootTable = this.cache.json.get('lootTable');
-            const allRareItems = [];
-            const allMythicItems = [];
+            const returnZone = this.returnScene || "Outer Grasslands";
+            console.log("Generating dungeon loot for zone:", returnZone);
+            
+            let zoneSpecificItems = [];
+            let highTierWeapons = [];
+            let highTierItems = [];
             
             if (lootTable && lootTable.zones) {
-                // Collect rare and mythic items from all zones
+                // First, collect items from the player's return zone (prioritize these)
+                if (lootTable.zones[returnZone]) {
+                    zoneSpecificItems = lootTable.zones[returnZone].filter(item => 
+                        item.rarity === "Epic" || item.rarity === "Rare" || item.rarity === "Mythic"
+                    );
+                    
+                    // Log found items for debugging
+                    console.log(`Found ${zoneSpecificItems.length} high-tier items from ${returnZone}`);
+                }
+                
+                // Then, collect rare and mythic items from all zones as fallback
                 Object.keys(lootTable.zones).forEach(zone => {
                     const zoneItems = lootTable.zones[zone];
                     zoneItems.forEach(item => {
-                        if (item.rarity === "Rare" && !allRareItems.includes(item)) {
-                            allRareItems.push(item);
-                        } else if ((item.rarity === "Epic" || item.rarity === "Mythic") && !allMythicItems.includes(item)) {
-                            allMythicItems.push(item);
+                        if (item.type === "Weapon" && (item.rarity === "Rare" || item.rarity === "Epic" || item.rarity === "Mythic")) {
+                            highTierWeapons.push(item);
+                        } else if ((item.rarity === "Epic" || item.rarity === "Mythic")) {
+                            highTierItems.push(item);
                         }
                     });
                 });
             }
             
-            // Select random rare and mythic items based on player level
-            let randomItem1, randomItem2;
+            // Guaranteed rare weapon from zone if available, otherwise fallback to any high tier weapon
+            let rareWeapon;
+            const zoneWeapons = zoneSpecificItems.filter(item => item.type === "Weapon");
             
-            // Higher level players get better loot
-            if (playerLevel >= 5 && allMythicItems.length > 0) {
-                // For higher level players, guarantee a mythic item
-                const itemIndex = Phaser.Math.Between(0, allMythicItems.length - 1);
-                randomItem1 = allMythicItems[itemIndex].name;
+            if (zoneWeapons.length > 0) {
+                // Prioritize weapons from the player's return zone
+                const itemIndex = Phaser.Math.Between(0, zoneWeapons.length - 1);
+                rareWeapon = zoneWeapons[itemIndex].name;
+                console.log(`Selected zone-specific weapon: ${rareWeapon}`);
+            } else if (highTierWeapons.length > 0) {
+                // Fallback to any high tier weapon
+                const itemIndex = Phaser.Math.Between(0, highTierWeapons.length - 1);
+                rareWeapon = highTierWeapons[itemIndex].name;
+                console.log(`Selected fallback weapon: ${rareWeapon}`);
             } else {
-                // Default to rare items for lower level players
-                const itemIndex = Phaser.Math.Between(0, allRareItems.length - 1);
-                randomItem1 = allRareItems[itemIndex] ? allRareItems[itemIndex].name : "Ancient Relic";
+                // Fallback weapons if loot table doesn't have any
+                const fallbackWeapons = [
+                    "Dragon Slayer Sword", 
+                    "Soul Reaver", 
+                    "Mythril Blade", 
+                    "Ancient Bow", 
+                    "Runic Staff"
+                ];
+                rareWeapon = fallbackWeapons[Phaser.Math.Between(0, fallbackWeapons.length - 1)];
+                console.log(`Selected hardcoded weapon: ${rareWeapon}`);
             }
             
-            // Second item is always rare
-            const itemIndex2 = Phaser.Math.Between(0, allRareItems.length - 1);
-            randomItem2 = allRareItems[itemIndex2] ? allRareItems[itemIndex2].name : "Magic Sword";
+            // Second item is a high value item from zone if available, otherwise any high tier item
+            let randomItem2;
+            const zoneSpecialty = zoneSpecificItems.filter(item => item.type !== "Weapon");
             
-            // Make sure items are different
-            while (randomItem2 === randomItem1 && allRareItems.length > 1) {
-                const newIndex = Phaser.Math.Between(0, allRareItems.length - 1);
-                randomItem2 = allRareItems[newIndex].name;
+            if (zoneSpecialty.length > 0) {
+                // Prioritize non-weapon items from the player's return zone
+                const itemIndex = Phaser.Math.Between(0, zoneSpecialty.length - 1);
+                randomItem2 = zoneSpecialty[itemIndex].name;
+                console.log(`Selected zone-specific item: ${randomItem2}`);
+            } else if (highTierItems.length > 0) {
+                // Fallback to any high tier item
+                const itemIndex = Phaser.Math.Between(0, highTierItems.length - 1);
+                randomItem2 = highTierItems[itemIndex].name;
+                console.log(`Selected fallback item: ${randomItem2}`);
+            } else {
+                // Fallback mythic items
+                const fallbackItems = [
+                    "Ancient Relic", 
+                    "Dragon Scale", 
+                    "Shadow Essence", 
+                    "Crystal Heart", 
+                    "Phoenix Feather"
+                ];
+                randomItem2 = fallbackItems[Phaser.Math.Between(0, fallbackItems.length - 1)];
+                console.log(`Selected hardcoded item: ${randomItem2}`);
             }
-            
-            // Fallback items if loot table is not available
-            if (!randomItem1) randomItem1 = "Ancient Relic";
-            if (!randomItem2) randomItem2 = "Magic Sword";
             
             // Display rewards
             const goldText = this.add.text(
@@ -951,18 +1105,28 @@ class DungeonScene extends Phaser.Scene {
             const itemText1 = this.add.text(
                 this.cameras.main.worldView.centerX,
                 this.cameras.main.worldView.centerY + 30,
-                `+ 1 ${randomItem1}`,
-                { font: '18px Arial', fill: '#ffff00', stroke: '#000000', strokeThickness: 2 }
+                `+ 1 ${rareWeapon}`,
+                { font: '22px Arial', fill: '#ff00ff', stroke: '#000000', strokeThickness: 3 }
             ).setOrigin(0.5).setScrollFactor(0).setDepth(100);
             
             const itemText2 = this.add.text(
                 this.cameras.main.worldView.centerX,
                 this.cameras.main.worldView.centerY + 60,
                 `+ 1 ${randomItem2}`,
-                { font: '18px Arial', fill: '#ffff00', stroke: '#000000', strokeThickness: 2 }
+                { font: '18px Arial', fill: '#00ffff', stroke: '#000000', strokeThickness: 2 }
             ).setOrigin(0.5).setScrollFactor(0).setDepth(100);
             
-            // Add visual effect
+            // Add visual effect for the rare weapon
+            this.tweens.add({
+                targets: itemText1,
+                scaleX: 1.2,
+                scaleY: 1.2,
+                duration: 500,
+                yoyo: true,
+                repeat: 3
+            });
+            
+            // Add box opening animation
             this.tweens.add({
                 targets: [this.lootBox],
                 angle: 10,
@@ -974,14 +1138,18 @@ class DungeonScene extends Phaser.Scene {
             // Add rewards to the player's inventory
             if (this.playerStats) {
                 this.playerStats.oromozi = (this.playerStats.oromozi || 0) + gold;
+                // Update gold display
+                if (this.goldText) {
+                    this.goldText.setText(`${this.playerStats.oromozi}`);
+                }
             }
             
             // Add the items to inventory
-            const existingItem1 = this.inventory.find(item => item.name === randomItem1);
+            const existingItem1 = this.inventory.find(item => item.name === rareWeapon);
             if (existingItem1) {
                 existingItem1.quantity += 1;
             } else {
-                this.inventory.push({ name: randomItem1, quantity: 1 });
+                this.inventory.push({ name: rareWeapon, quantity: 1 });
             }
             
             const existingItem2 = this.inventory.find(item => item.name === randomItem2);
@@ -991,19 +1159,13 @@ class DungeonScene extends Phaser.Scene {
                 this.inventory.push({ name: randomItem2, quantity: 1 });
             }
             
-            // Animate and fade out text
-            this.tweens.add({
-                targets: [rewardText, goldText, itemText1, itemText2],
-                alpha: 0,
-                duration: 2000,
-                delay: 3000,
-                onComplete: () => {
-                    rewardText.destroy();
-                    goldText.destroy();
-                    itemText1.destroy();
-                    itemText2.destroy();
-                }
-            });
+            // Log the items in the log display
+            this.addToLog(`Received Treasure: ${gold} Gold`);
+            this.addToLog(`Received: ${rareWeapon}`);
+            this.addToLog(`Received: ${randomItem2}`);
+            
+            // Create special effects for legendary weapon discovery
+            this.createWeaponDiscoveryEffect(this.lootBox.x, this.lootBox.y);
             
             // Hide loot glow effect
             this.lootGlow.destroy();
@@ -1011,129 +1173,114 @@ class DungeonScene extends Phaser.Scene {
             // Hide loot box
             this.lootBox.setAlpha(0.5);
             this.lootBox.disableInteractive();
+            
+            // Add "EXIT" text to indicate dungeon completion
+            const exitPrompt = this.add.text(
+                this.cameras.main.worldView.centerX,
+                this.cameras.main.worldView.centerY + 50,
+                'Dungeon Complete! Exiting...',
+                { font: '20px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 3 }
+            ).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+            
+            // Animate and fade out text with longer delay to give player time to see rewards
+            this.tweens.add({
+                targets: [rewardText, goldText, itemText1, itemText2, exitPrompt],
+                alpha: 0,
+                duration: 2000,
+                delay: 4000,
+                onComplete: () => {
+                    rewardText.destroy();
+                    goldText.destroy();
+                    itemText1.destroy();
+                    itemText2.destroy();
+                    exitPrompt.destroy();
+                    
+                    // Automatically exit the dungeon after showing rewards
+                    this.time.delayedCall(1000, () => {
+                        this.exitDungeon();
+                    });
+                }
+            });
         }
     }
-
-    // Method to handle player attacking monsters
-    attackMonster(monster) {
-        if (this.player.attackCooldown > 0) return;
-
-        // Set attack cooldown
-        this.player.attackCooldown = 500;
-        setTimeout(() => {
-            this.player.attackCooldown = 0;
-        }, 500);
-
-        // Calculate damage based on player weapon
-        let playerDamage = 10; // Base damage
+    
+    // Special effect for discovering a rare weapon
+    createWeaponDiscoveryEffect(x, y) {
+        // Create a particle emitter for a "magical" effect
+        const particles = this.add.particles('star');
         
-        // Get current weapon from main game if available
-        if (this.registry.get('playerWeapon')) {
-            const weaponType = this.registry.get('playerWeapon');
-            if (weaponType === 'woodSword') playerDamage = 15;
-            if (weaponType === 'ironSword') playerDamage = 25;
-            if (weaponType === 'goldSword') playerDamage = 40;
-        }
+        const emitter = particles.createEmitter({
+            x: x,
+            y: y,
+            speed: { min: 50, max: 200 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 0.6, end: 0 },
+            blendMode: 'ADD',
+            lifespan: 2000,
+            quantity: 1,
+            frequency: 100,
+            tint: [0xff00ff, 0xffff00, 0x00ffff]
+        });
         
-        // Apply damage to monster
-        monster.health -= playerDamage;
-        
-        // Show damage feedback
-        this.showDamageText(monster.x, monster.y, playerDamage, 0xff0000);
-        
-        // Create hit effect
-        this.createHitEffect(monster.x, monster.y);
-        
-        // Flash monster red to indicate hit
-        monster.setTint(0xff0000);
-        setTimeout(() => {
-            monster.clearTint();
-        }, 200);
-
-        // Check if monster is defeated
-        if (monster.health <= 0) {
-            // Create death animation
-            this.createDeathEffect(monster.x, monster.y);
-            
-            // Drop loot
-            this.dropLoot(monster.x, monster.y, monster.type);
-            
-            // Remove monster
-            this.monsters.remove(monster, true, true);
-        }
+        // Stop the emitter after a few seconds
+        this.time.delayedCall(3000, () => {
+            emitter.stop();
+            // Destroy the particle manager after particles fade
+            this.time.delayedCall(2000, () => {
+                particles.destroy();
+            });
+        });
     }
 
-    // Function to show damage text
-    showDamageText(x, y, amount, color = 0xffffff) {
-        // Create the text
-        const damageText = this.add.text(x, y - 20, amount.toString(), {
-            font: '18px Arial',
-            fill: color === 0xffffff ? '#ffffff' : '#ff0000',
-            stroke: '#000000',
-            strokeThickness: 3
-        }).setOrigin(0.5);
+    // Function to create hit effect - matches createSimpleEffect from Scavenger Mode
+    createHitEffect(x, y, color = 0xff0000) {
+        // Create a circle that fades out
+        const circle = this.add.circle(x, y, 15, color, 0.7);
+        circle.setDepth(3000);
         
-        // Animate the text
+        // Fade out and expand
         this.tweens.add({
-            targets: damageText,
-            y: y - 50,
+            targets: circle,
             alpha: 0,
-            duration: 800,
-            ease: 'Power1',
+            scale: 2,
+            duration: 500,
             onComplete: () => {
-                damageText.destroy();
+                circle.destroy();
             }
         });
     }
 
-    // Function to create hit effect
-    createHitEffect(x, y) {
-        // Create particle effect for hit
-        const particles = this.add.particles('star');
-        const emitter = particles.createEmitter({
-            x: x,
-            y: y,
-            speed: { min: 50, max: 100 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 0.5, end: 0 },
-            lifespan: 300,
-            quantity: 5,
-            blendMode: 'ADD'
-        });
-        
-        // Stop the emitter after a short time
-        setTimeout(() => {
-            emitter.stop();
-            // Destroy particles after they've completed
-            setTimeout(() => {
-                particles.destroy();
-            }, 300);
-        }, 50);
-    }
-
-    // Function to create death effect
+    // Function to create death effect - similar to createSimpleEffect but more particles
     createDeathEffect(x, y) {
-        // Create particle effect for death
-        const particles = this.add.particles('star');
-        const emitter = particles.createEmitter({
-            x: x,
-            y: y,
-            speed: { min: 100, max: 200 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 1, end: 0 },
-            lifespan: 500,
-            quantity: 15,
-            blendMode: 'ADD'
+        // Create a larger circle with different color for death effect
+        const circle = this.add.circle(x, y, 25, 0xff0000, 0.7);
+        circle.setDepth(3000);
+        
+        // Fade out and expand
+        this.tweens.add({
+            targets: circle,
+            alpha: 0,
+            scale: 3,
+            duration: 800,
+            onComplete: () => {
+                circle.destroy();
+            }
         });
         
-        // Stop the emitter after a short time
-        setTimeout(() => {
-            emitter.stop();
-            // Destroy particles after they've completed
-            setTimeout(() => {
-                particles.destroy();
-            }, 500);
-        }, 100);
+        // Add a second smaller circle for more impact
+        const circle2 = this.add.circle(x, y, 15, 0xffffff, 0.5);
+        circle2.setDepth(3001);
+        
+        // Fade out and expand faster
+        this.tweens.add({
+            targets: circle2,
+            alpha: 0,
+            scale: 2,
+            duration: 400,
+            onComplete: () => {
+                circle2.destroy();
+            }
+        });
     }
 
     // Function to handle monster dropping loot
@@ -1214,10 +1361,13 @@ class DungeonScene extends Phaser.Scene {
     
     // Function to show pickup message
     showPickupMessage(item) {
-        // Create toast message at bottom of screen
+        // Add to log
+        this.addToLog(`Picked up: ${item}`);
+        
+        // Create toast message - RAISED position to be visible on screen
         const message = this.add.text(
             this.cameras.main.width / 2, 
-            this.cameras.main.height - 100, 
+            this.cameras.main.height - 70, // Raised from bottom
             `Picked up: ${item}`, 
             {
                 font: '18px Arial',
@@ -1233,7 +1383,7 @@ class DungeonScene extends Phaser.Scene {
         this.tweens.add({
             targets: message,
             alpha: 0,
-            y: this.cameras.main.height - 120,
+            y: this.cameras.main.height - 90, // Raised animation end position
             duration: 2000,
             ease: 'Power1',
             onComplete: () => {

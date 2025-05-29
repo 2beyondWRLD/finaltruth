@@ -196,26 +196,53 @@ function recalcEquippedResist(scene) {
   }
 }
 
-function updateHUD(scene) {
-  if (!scene || !scene.hudText || !scene.playerStats) return;
-  
-  const s = scene.playerStats;
+/* =======================================================
+   GLOBAL HUD UPDATE FUNCTION
+======================================================= */
+function globalUpdateHUD(scene) {
+  if (!scene || !scene.hudText) return;
   
   try {
-    scene.hudText.setText(""); // Clear text to prevent overlay
-    if (scene.currentZone === "Village") {
-      scene.hudText.setText(`OROMOZI: ${s.oromozi} | LEVEL: ${s.level || 1}`);
+    if (scene.constructor.name === 'DungeonScene') {
+      // DungeonScene-specific HUD update
+      scene.hudText.setText(`HEALTH: ${scene.playerHealth}/${scene.playerMaxHealth} | LEVEL: ${scene.playerStats.level || 1}`);
     } else {
-      scene.hudText.setText(
-        `HEALTH: ${s.health}   STAMINA: ${s.stamina}\nHUNGER: ${s.hunger}   THIRST: ${s.thirst}\nOROMOZI: ${s.oromozi}   LEVEL: ${s.level || 1}`
-      );
+      // MainGameScene and other scenes
+      const s = scene.playerStats;
+      scene.hudText.setText(""); // Clear text to prevent overlay
+      if (scene.currentZone === "Village") {
+        scene.hudText.setText(`OROMOZI: ${s.oromozi} | LEVEL: ${s.level || 1}`);
+      } else {
+        scene.hudText.setText(
+          `HEALTH: ${s.health}   STAMINA: ${s.stamina}\nHUNGER: ${s.hunger}   THIRST: ${s.thirst}\nOROMOZI: ${s.oromozi}   LEVEL: ${s.level || 1}`
+        );
+      }
     }
     
     // Update health bar if it exists
     if (scene.healthBar) {
-      const healthPercent = s.health / 100;
+      let healthValue, maxHealthValue;
+      
+      if (scene.constructor.name === 'DungeonScene') {
+        healthValue = scene.playerHealth;
+        maxHealthValue = scene.playerMaxHealth;
+      } else {
+        healthValue = scene.playerStats.health;
+        maxHealthValue = 100;
+      }
+      
+      const healthPercent = healthValue / maxHealthValue;
       scene.healthBar.clear();
-      scene.healthBar.fillStyle(0x00ff00, 1);
+      
+      // Set color based on health percentage
+      let barColor = 0x00ff00; // Green by default
+      if (healthPercent < 0.3) {
+        barColor = 0xff0000; // Red when low health
+      } else if (healthPercent < 0.6) {
+        barColor = 0xffff00; // Yellow when medium health
+      }
+      
+      scene.healthBar.fillStyle(barColor, 1);
       scene.healthBar.fillRect(10, 10, 150 * healthPercent, 10);
       scene.healthBar.lineStyle(2, 0xffffff, 1);
       scene.healthBar.strokeRect(10, 10, 150, 10);
@@ -223,6 +250,11 @@ function updateHUD(scene) {
   } catch (error) {
     console.warn("Error updating HUD:", error);
   }
+}
+
+// Modify original updateHUD to use the global function
+function updateHUD(scene) {
+  globalUpdateHUD(scene);
 }
 
 function getItemData(scene, itemName) {
@@ -652,26 +684,84 @@ function hideModalOverlay(scene) {
 }
 
 function createScrollableMenu(scene, title, options) {
-  const boxW = 260, boxH = 200;
+  const boxW = 300; // Increased width for better text display
+  const boxH = 250; // Increased height for better spacing
   const boxX = (scene.game.config.width - boxW) / 2;
   const boxY = (scene.game.config.height - boxH) / 2;
   const maxVisible = 6;
   let scrollIndex = 0;
 
-  showDialog(scene, `${title}\n(Use UP/DOWN to scroll, SPACE to select)`);
+  // Create dialog background
+  showDialog(scene, ""); // Clear previous text
+  scene.dialogBg.clear();
   scene.dialogBg.fillStyle(0x000000, 0.8);
   scene.dialogBg.fillRect(boxX, boxY, boxW, boxH);
+  scene.dialogBg.lineStyle(2, 0xffffff, 1);
+  scene.dialogBg.strokeRect(boxX, boxY, boxW, boxH);
+  
+  // Add a separator line between title and options
+  scene.dialogBg.lineStyle(1, 0xaaaaaa, 0.7);
+  scene.dialogBg.lineBetween(boxX + 10, boxY + 60, boxX + boxW - 10, boxY + 60);
+  
+  // Create title text separately for better styling and positioning
+  if (scene.menuTitleText) {
+    scene.menuTitleText.destroy();
+  }
+  
+  scene.menuTitleText = scene.add.text(
+    boxX + boxW/2, 
+    boxY + 20, 
+    title, 
+    {
+      font: "16px Arial",
+      fill: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 2,
+      align: "center",
+      wordWrap: { width: boxW - 40 }  // Add word wrapping with good margins
+    }
+  );
+  
+  scene.menuTitleText.setOrigin(0.5, 0);
+  scene.menuTitleText.setDepth(1601);
+  scene.menuTitleText.setScrollFactor(0);
+  
+  // Instructions text BELOW the separator line to avoid overlap
+  if (scene.menuInstructionsText) {
+    scene.menuInstructionsText.destroy();
+  }
+  
+  scene.menuInstructionsText = scene.add.text(
+    boxX + boxW/2, 
+    boxY + 65, 
+    "(Use UP/DOWN to scroll, SPACE to select)", 
+    {
+      font: "12px Arial",
+      fill: "#cccccc",
+      stroke: "#000000",
+      strokeThickness: 1,
+      align: "center"
+    }
+  );
+  
+  scene.menuInstructionsText.setOrigin(0.5, 0);
+  scene.menuInstructionsText.setDepth(1601);
+  scene.menuInstructionsText.setScrollFactor(0);
 
   const updateMenu = () => {
     clearButtons(scene);
     const visibleOptions = options.slice(scrollIndex, scrollIndex + maxVisible);
+    
     visibleOptions.forEach((option, i) => {
-      const txt = scene.add.text(boxX + 10, boxY + 80 + i * 20, option.label, { 
+      const textColor = option.highlight ? "#ffff00" : "#ffffff";
+      
+      const txt = scene.add.text(boxX + 20, boxY + 90 + i * 25, option.label, { 
         font: "14px Arial", 
-        fill: option.highlight ? "#ffff00" : "#ffffff",
+        fill: textColor,
         stroke: "#000000",
         strokeThickness: 2
       });
+      
       txt.setDepth(1601);
       txt.setInteractive({ useHandCursor: true });
       txt.on("pointerdown", () => {
@@ -1389,8 +1479,14 @@ function confirmInvention(scene, items) {
 }
 
 function showCraftingWorkshopOptions(scene) {
+  // First, clean up any existing UI elements
+  hideDialog(scene);
+  clearButtons(scene);
+  
+  // Set the screen type
   scene.narrativeScreen = SCREEN_CRAFT;
   showModalOverlay(scene);
+  
   const options = [
     {
       label: "Craft Item",
@@ -1427,6 +1523,26 @@ function showCraftingWorkshopOptions(scene) {
 }
 
 function showCraftItemScreen(scene) {
+  // First, properly clean up any existing dialog and menu elements
+  hideDialog(scene);
+  clearButtons(scene);
+  
+  // If the previous menu's title or instructions are still visible, destroy them
+  if (scene.menuTitleText) {
+    scene.menuTitleText.destroy();
+    scene.menuTitleText = null;
+  }
+  
+  if (scene.menuInstructionsText) {
+    scene.menuInstructionsText.destroy();
+    scene.menuInstructionsText = null;
+  }
+  
+  if (scene.dialogTitleText) {
+    scene.dialogTitleText.destroy();
+    scene.dialogTitleText = null;
+  }
+  
   const recipes = [
     { result: "Iron Sword", ingredients: ["Iron Ore", "Wood"], description: "A sturdy blade for combat." },
     { result: "Wooden Armor", ingredients: ["Wood", "Wood"], description: "Basic protection from the wilds." },
@@ -1439,39 +1555,271 @@ function showCraftItemScreen(scene) {
     { result: "Fire Staff", ingredients: ["Wood", "Fire Crystal"], description: "Channels fiery magic." },
     { result: "Shield of Roots", ingredients: ["Wood", "Vines"], description: "Nature's sturdy defense." }
   ];
-  clearButtons(scene);
-  const options = recipes.map(recipe => ({
-    label: `${recipe.result} (${recipe.ingredients.join(", ")})`,
-    callback: () => {
-      clearButtons(scene);
-      confirmCraftItem(scene, recipe);
-    }
-  }));
-  options.push({
-    label: "Back",
-    callback: () => {
-      clearButtons(scene);
-      showCraftingWorkshopOptions(scene);
+  
+  console.log("Player inventory:", scene.localInventory);
+  
+  // Show inventory message to make it clear what resources the player has
+  let inventoryText = "Current Materials:\n";
+  const craftingMaterials = ["Wood", "Iron Ore", "Steel Ingot", "Leather", "Thread", 
+                           "Herbs", "Water", "Poisonous Berries", "Stone", "Copper Ore", 
+                           "Fire Crystal", "Vines"];
+  
+  craftingMaterials.forEach(material => {
+    const item = scene.localInventory.find(i => i.name === material);
+    if (item) {
+      inventoryText += `${material}: ${item.quantity}\n`;
     }
   });
-  createScrollableMenu(scene, "Select an item to craft:", options);
+  
+  // Show a notification about what materials the player has
+  alert(inventoryText);
+  
+  // Create our own menu with direct highlighting
+  const boxW = 300; // Increased width
+  const boxH = 250; // Increased height
+  const boxX = (scene.game.config.width - boxW) / 2;
+  const boxY = (scene.game.config.height - boxH) / 2;
+  
+  // Create dialog background
+  scene.dialogBg.clear();
+  scene.dialogBg.fillStyle(0x000000, 0.8);
+  scene.dialogBg.fillRect(boxX, boxY, boxW, boxH);
+  scene.dialogBg.lineStyle(2, 0xffffff, 1);
+  scene.dialogBg.strokeRect(boxX, boxY, boxW, boxH);
+  
+  // Add a separator line between title and options
+  scene.dialogBg.lineStyle(1, 0xaaaaaa, 0.7);
+  scene.dialogBg.lineBetween(boxX + 10, boxY + 60, boxX + boxW - 10, boxY + 60);
+  
+  // Make dialog visible
+  scene.dialogBg.setVisible(true);
+  
+  // Set up scroll state for this menu
+  const maxVisible = 6; // Show at most 6 recipes at once
+  let scrollIndex = 0;
+  
+  // Create title text
+  const titleText = scene.add.text(
+    boxX + boxW/2, 
+    boxY + 20, 
+    "Select an item to craft:", 
+    {
+      font: "16px Arial",
+      fill: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 2,
+      align: "center",
+      wordWrap: { width: boxW - 40 }
+    }
+  );
+  titleText.setOrigin(0.5, 0);
+  titleText.setDepth(1601);
+  titleText.setScrollFactor(0);
+  scene.buttons.push(titleText);
+  
+  // Add instructions text below separator line
+  const instructionsText = scene.add.text(
+    boxX + boxW/2, 
+    boxY + 65, 
+    "(Yellow items can be crafted - Use UP/DOWN to scroll)", 
+    {
+      font: "12px Arial",
+      fill: "#cccccc",
+      stroke: "#000000",
+      strokeThickness: 1,
+      align: "center"
+    }
+  );
+  instructionsText.setOrigin(0.5, 0);
+  instructionsText.setDepth(1601);
+  instructionsText.setScrollFactor(0);
+  scene.buttons.push(instructionsText);
+  
+  // Function to update the displayed recipes based on scroll position
+  const updateRecipeDisplay = () => {
+    // Clear previous recipe buttons
+    scene.buttons = scene.buttons.filter(button => {
+      if (button._recipeButton) {
+        button.destroy();
+        return false;
+      }
+      return true;
+    });
+    
+    // Show scroll indicators if needed
+    if (scene.upArrow) {
+      scene.upArrow.destroy();
+      scene.upArrow = null;
+    }
+    
+    if (scene.downArrow) {
+      scene.downArrow.destroy();
+      scene.downArrow = null;
+    }
+    
+    if (scrollIndex > 0) {
+      scene.upArrow = scene.add.text(boxX + boxW - 20, boxY + 70, "▲", { 
+        font: "16px Arial", 
+        fill: "#ffffff" 
+      }).setDepth(1601).setScrollFactor(0);
+      scene.buttons.push(scene.upArrow);
+    }
+    
+    if (scrollIndex + maxVisible < recipes.length) {
+      scene.downArrow = scene.add.text(boxX + boxW - 20, boxY + boxH - 20, "▼", { 
+        font: "16px Arial", 
+        fill: "#ffffff" 
+      }).setDepth(1601).setScrollFactor(0);
+      scene.buttons.push(scene.downArrow);
+    }
+    
+    // Get the slice of recipes to display
+    const visibleRecipes = recipes.slice(scrollIndex, scrollIndex + maxVisible);
+    
+    // Create recipe buttons
+    let yOffset = 90; // Adjusted to account for the instructions text
+    visibleRecipes.forEach((recipe, index) => {
+      // Check if player has all ingredients
+      const canCraft = recipe.ingredients.every(ing => {
+        // Count how many of this ingredient are needed
+        const needed = recipe.ingredients.filter(i => i === ing).length;
+        // Check if player has enough
+        const playerItem = scene.localInventory.find(i => i.name === ing);
+        const hasEnough = playerItem && playerItem.quantity >= needed;
+        
+        return hasEnough;
+      });
+      
+      // Create button text with conditional highlight
+      const buttonText = scene.add.text(
+        boxX + 20, // Increased indent
+        boxY + yOffset + (index * 25), // Increased spacing between items
+        `${recipe.result} (${recipe.ingredients.join(", ")})`, 
+        {
+          font: "14px Arial",
+          fill: canCraft ? "#ffff00" : "#ffffff", // Yellow for craftable items
+          stroke: "#000000",
+          strokeThickness: 2
+        }
+      );
+      
+      buttonText._recipeButton = true; // Mark as a recipe button for cleanup
+      buttonText._recipeIndex = scrollIndex + index; // Store the actual recipe index
+      
+      buttonText.setDepth(1601);
+      buttonText.setScrollFactor(0);
+      buttonText.setInteractive({ useHandCursor: true });
+      
+      // Add button effects
+      buttonText.on("pointerover", () => {
+        buttonText.setStyle({ fill: "#ff9900" }); // Orange on hover
+      });
+      
+      buttonText.on("pointerout", () => {
+        buttonText.setStyle({ fill: canCraft ? "#ffff00" : "#ffffff" }); // Return to yellow or white
+      });
+      
+      buttonText.on("pointerdown", () => {
+        clearButtons(scene);
+        confirmCraftItem(scene, recipes[buttonText._recipeIndex]);
+      });
+      
+      scene.buttons.push(buttonText);
+    });
+  };
+  
+  // Initial display of recipes
+  updateRecipeDisplay();
+  
+  // Add back button
+  const backButton = scene.add.text(
+    boxX + boxW/2, 
+    boxY + boxH - 30, 
+    "Back", 
+    {
+      font: "14px Arial",
+      fill: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 2,
+      backgroundColor: "#333333",
+      padding: { x: 10, y: 5 }
+    }
+  );
+  
+  backButton.setOrigin(0.5);
+  backButton.setDepth(1601);
+  backButton.setScrollFactor(0);
+  backButton.setInteractive({ useHandCursor: true });
+  
+  backButton.on("pointerover", () => {
+    backButton.setStyle({ fill: "#ff9900" });
+  });
+  
+  backButton.on("pointerout", () => {
+    backButton.setStyle({ fill: "#ffffff" });
+  });
+  
+  backButton.on("pointerdown", () => {
+    // Remove scroll listeners when going back
+    scene.input.keyboard.off("keydown-UP");
+    scene.input.keyboard.off("keydown-DOWN");
+    
+    clearButtons(scene);
+    showCraftingWorkshopOptions(scene);
+  });
+  
+  scene.buttons.push(backButton);
+  
+  // Set up keyboard controls for scrolling
+  scene.input.keyboard.off("keydown-UP");
+  scene.input.keyboard.off("keydown-DOWN");
+  
+  scene.input.keyboard.on("keydown-UP", () => {
+    if (scrollIndex > 0) {
+      scrollIndex--;
+      updateRecipeDisplay();
+    }
+  });
+  
+  scene.input.keyboard.on("keydown-DOWN", () => {
+    if (scrollIndex + maxVisible < recipes.length) {
+      scrollIndex++;
+      updateRecipeDisplay();
+    }
+  });
 }
 
 function confirmCraftItem(scene, recipe) {
-  const hasIngredients = recipe.ingredients.every(ing => scene.localInventory.some(i => i.name === ing && i.quantity >= 1));
+  // Count how many of each ingredient is needed
+  const ingredientCounts = {};
+  recipe.ingredients.forEach(ing => {
+    ingredientCounts[ing] = (ingredientCounts[ing] || 0) + 1;
+  });
+  
+  // Check if player has enough of each ingredient
+  const hasIngredients = Object.entries(ingredientCounts).every(([ing, count]) => {
+    const playerItem = scene.localInventory.find(i => i.name === ing);
+    return playerItem && playerItem.quantity >= count;
+  });
+  
   if (!hasIngredients) {
     alert(`You don't have all required ingredients: ${recipe.ingredients.join(", ")}`);
     showCraftingWorkshopOptions(scene);
     return;
   }
+  
   showDialog(scene, `Craft ${recipe.result} using ${recipe.ingredients.join(", ")}?\n${recipe.description}\nConfirm crafting?`);
   const options = [
     {
       label: "Yes",
       callback: async () => {
-        recipe.ingredients.forEach(item => removeFromInventory(scene, item));
+        // Remove ingredients, accounting for duplicates
+        Object.entries(ingredientCounts).forEach(([item, count]) => {
+          removeFromInventory(scene, item, count);
+        });
+        
         addToInventory(scene, recipe.result);
-        alert(`Crafted ${recipe.result} (simulated).`);
+        alert(`Crafted ${recipe.result}!`);
         clearButtons(scene);
         showCraftingWorkshopOptions(scene);
       }
@@ -1564,6 +1912,31 @@ function handleVillageContractInteraction(scene, obj) {
       showTradingPostOptions(scene);
       break;
     case "crafting_workshop":
+      // Add crafting materials directly when accessing the crafting workshop
+      const craftingMaterials = [
+        { name: "Wood", quantity: 5 },
+        { name: "Iron Ore", quantity: 2 },
+        { name: "Stone", quantity: 3 },
+        { name: "Herbs", quantity: 2 },
+        { name: "Water", quantity: 2 },
+        { name: "Vines", quantity: 1 },
+        { name: "Thread", quantity: 2 },
+        { name: "Leather", quantity: 1 }
+      ];
+      
+      // Add each material to inventory
+      craftingMaterials.forEach(material => {
+        const existingItem = scene.localInventory.find(item => item.name === material.name);
+        if (existingItem) {
+          existingItem.quantity = Math.max(existingItem.quantity, material.quantity);
+        } else {
+          scene.localInventory.push({ name: material.name, quantity: material.quantity });
+        }
+      });
+      
+      console.log("Added crafting materials to inventory:", scene.localInventory);
+      addToLog(scene, "Received crafting materials!");
+      
       showCraftingWorkshopOptions(scene);
       break;
     case "liquidity_bank":
@@ -1879,7 +2252,8 @@ function overlapsObstacle(scene, x, y, buffer = 64) {
    8) HELPER UI FUNCTIONS (IMPROVED)
 ======================================================= */
 function showDialog(scene, text) {
-  const boxW = 260, boxH = 200;
+  const boxW = 300; // Increased width
+  const boxH = 200; // Keep this height for general dialogs
   const boxX = (scene.game.config.width - boxW) / 2;
   const boxY = (scene.game.config.height - boxH) / 2;
   
@@ -1889,12 +2263,64 @@ function showDialog(scene, text) {
   scene.dialogBg.lineStyle(2, 0xffffff, 1);
   scene.dialogBg.strokeRect(boxX, boxY, boxW, boxH);
   
-  scene.dialogText.setPosition(boxX + 10, boxY + 10);
-  scene.dialogText.setText(text);
+  // Add a subtle header area
+  if (text && text.length > 0) {
+    scene.dialogBg.fillStyle(0x333333, 0.5);
+    scene.dialogBg.fillRect(boxX, boxY, boxW, 30);
+    
+    // Add a separator line below the header
+    scene.dialogBg.lineStyle(1, 0xaaaaaa, 0.7);
+    scene.dialogBg.lineBetween(boxX, boxY + 30, boxX + boxW, boxY + 30);
+  }
+  
+  scene.dialogText.setPosition(boxX + boxW/2, boxY + 20);
+  
+  // Check if the text contains a title section (before newlines)
+  let titleText = "";
+  let bodyText = text;
+  
+  if (text && text.includes("\n")) {
+    const parts = text.split("\n");
+    titleText = parts[0];
+    bodyText = parts.slice(1).join("\n");
+    
+    // Create separate text objects for title and body for better styling
+    if (scene.dialogTitleText) {
+      scene.dialogTitleText.destroy();
+    }
+    
+    scene.dialogTitleText = scene.add.text(
+      boxX + boxW/2,
+      boxY + 15,
+      titleText,
+      {
+        font: "16px Arial",
+        fill: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 2,
+        align: "center"
+      }
+    );
+    scene.dialogTitleText.setOrigin(0.5, 0.5);
+    scene.dialogTitleText.setDepth(1601);
+    scene.dialogTitleText.setScrollFactor(0);
+    
+    // Set the body text
+    scene.dialogText.setText(bodyText);
+    scene.dialogText.setPosition(boxX + 15, boxY + 45);
+    scene.dialogText.setOrigin(0, 0);
+  } else {
+    // Just regular text with centered alignment
+    scene.dialogText.setText(text);
+    scene.dialogText.setOrigin(0.5, 0);
+  }
+  
   scene.dialogText.setStyle({
     font: "14px Arial",
     fill: "#ffffff",
-    wordWrap: { width: boxW - 20 }
+    wordWrap: { width: boxW - 30 },
+    stroke: "#000000",
+    strokeThickness: 2
   });
   
   scene.dialogBg.setVisible(true);
@@ -1909,37 +2335,137 @@ function hideDialog(scene) {
   scene.dialogBg.clear();
   scene.dialogBg.setVisible(false);
   scene.dialogText.setVisible(false);
+  
+  // Clean up additional dialog elements
+  if (scene.dialogTitleText) {
+    scene.dialogTitleText.setVisible(false);
+  }
+  
+  if (scene.menuTitleText) {
+    scene.menuTitleText.setVisible(false);
+  }
+  
+  if (scene.menuInstructionsText) {
+    scene.menuInstructionsText.setVisible(false);
+  }
+  
+  // Clean up scroll arrows
+  if (scene.upArrow) {
+    scene.upArrow.destroy();
+    scene.upArrow = null;
+  }
+  
+  if (scene.downArrow) {
+    scene.downArrow.destroy();
+    scene.downArrow = null;
+  }
+  
+  // Remove keyboard listeners for scrolling
+  scene.input.keyboard.off("keydown-UP");
+  scene.input.keyboard.off("keydown-DOWN");
+  
   updateHUD(scene);
 }
 
 function createButtons(scene, lines) {
   clearButtons(scene);
-  const boxW = 260, boxH = 200;
+  const boxW = 300; // Match the new dialog box width
+  const boxH = 200;
   const boxX = (scene.game.config.width - boxW) / 2;
   const boxY = (scene.game.config.height - boxH) / 2;
-  let startX = boxX + 10;
+  
+  // Calculate the number of buttons and their placement
+  const totalButtons = lines.length;
+  const buttonSpacing = 30; // Vertical spacing between buttons
+  const buttonWidth = 120; // Fixed width for buttons for consistent appearance
+  
+  // Calculate starting Y position to center buttons vertically in the lower half
+  const startY = boxY + boxH - (totalButtons * buttonSpacing) - 20;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const txt = scene.add.text(startX, boxY + 80 + i * 25, line.label, { 
-      font: "14px Arial", 
-      fill: "#ffff00",
-      stroke: "#000000",
-      strokeThickness: 2
-    });
     
-    txt.setDepth(1601);
+    // Create button with background
+    const buttonBg = scene.add.graphics();
+    buttonBg.fillStyle(0x333333, 0.7);
+    buttonBg.fillRoundedRect(
+      boxX + boxW/2 - buttonWidth/2, 
+      startY + i * buttonSpacing - 10, 
+      buttonWidth, 
+      25, 
+      5
+    );
+    buttonBg.lineStyle(1, 0x666666, 0.8);
+    buttonBg.strokeRoundedRect(
+      boxX + boxW/2 - buttonWidth/2, 
+      startY + i * buttonSpacing - 10, 
+      buttonWidth, 
+      25, 
+      5
+    );
+    buttonBg.setDepth(1601);
+    buttonBg.setScrollFactor(0);
+    scene.buttons.push(buttonBg);
+    
+    // Create button text
+    const txt = scene.add.text(
+      boxX + boxW/2, 
+      startY + i * buttonSpacing, 
+      line.label, 
+      { 
+        font: "14px Arial", 
+        fill: "#ffff00",
+        stroke: "#000000",
+        strokeThickness: 2,
+        align: "center"
+      }
+    );
+    
+    txt.setOrigin(0.5, 0.5);
+    txt.setDepth(1602);
     txt.setInteractive({ useHandCursor: true });
     
     // Add button effects
     txt.on("pointerover", () => {
       txt.setStyle({ fill: "#ff9900" });
-      txt.setScale(1.1);
+      buttonBg.clear();
+      buttonBg.fillStyle(0x555555, 0.8);
+      buttonBg.fillRoundedRect(
+        boxX + boxW/2 - buttonWidth/2, 
+        startY + i * buttonSpacing - 10, 
+        buttonWidth, 
+        25, 
+        5
+      );
+      buttonBg.lineStyle(1, 0x888888, 0.9);
+      buttonBg.strokeRoundedRect(
+        boxX + boxW/2 - buttonWidth/2, 
+        startY + i * buttonSpacing - 10, 
+        buttonWidth, 
+        25, 
+        5
+      );
     });
     
     txt.on("pointerout", () => {
       txt.setStyle({ fill: "#ffff00" });
-      txt.setScale(1);
+      buttonBg.clear();
+      buttonBg.fillStyle(0x333333, 0.7);
+      buttonBg.fillRoundedRect(
+        boxX + boxW/2 - buttonWidth/2, 
+        startY + i * buttonSpacing - 10, 
+        buttonWidth, 
+        25, 
+        5
+      );
+      buttonBg.lineStyle(1, 0x666666, 0.8);
+      buttonBg.strokeRoundedRect(
+        boxX + boxW/2 - buttonWidth/2, 
+        startY + i * buttonSpacing - 10, 
+        buttonWidth, 
+        25, 
+        5
+      );
     });
     
     txt.on("pointerdown", () => {
@@ -2349,8 +2875,9 @@ class Monster extends Phaser.Physics.Arcade.Sprite {
   attack(player) {
     if (this.scene.playerStats.health > 0) {
       // Calculate damage with some player defense reduction
-      const battleStats = calculateBattleStats(this.scene);
+      const battleStats = this.calculateBattleStats(this.scene);
       const damage = Math.max(1, this.damage - Math.floor(battleStats.defense * 0.3));
+      
       
       this.scene.playerStats.health = Math.max(this.scene.playerStats.health - damage, 0);
       console.log("Monster attacked player! Health:", this.scene.playerStats.health);
@@ -2417,6 +2944,27 @@ class Monster extends Phaser.Physics.Arcade.Sprite {
     }
     super.destroy();
   }
+
+  // Function to calculate battle statistics based on player state and equipment
+  calculateBattleStats(scene) {
+    if (!scene || !scene.playerStats) {
+      // Return default values if scene or playerStats not available
+      return { attack: 10, defense: 5 };
+    }
+    
+    // Base stats that scale with level
+    const baseAttack = 10 + (scene.playerStats.level - 1) * 2;
+    const baseDefense = 5 + (scene.playerStats.level - 1);
+    
+    // Add any equipped item bonuses (if available)
+    const attackBonus = scene.playerStats.attackBonus || 0;
+    const defenseBonus = scene.playerStats.defenseBonus || 0;
+    
+    return {
+      attack: baseAttack + attackBonus,
+      defense: baseDefense + defenseBonus
+    };
+  }
 }
 
 function preload() {
@@ -2473,11 +3021,18 @@ function preload() {
 function createScene() {
   console.log("createScene: Received scene data:", this.scene.settings.data);
   
-  // Initialize inventory with camping materials first
-  this.localInventory = [
-    { name: "Cloth", quantity: 1 },
-    { name: "Stick", quantity: 2 }
-  ];
+  // Initialize inventory with default camping materials only if there's no passed inventory
+  if (!this.scene.settings.data || !this.scene.settings.data.inventory) {
+    this.localInventory = [
+      { name: "Cloth", quantity: 1 },
+      { name: "Stick", quantity: 2 }
+    ];
+    console.log("No inventory data found, using default camping materials");
+  } else {
+    // Use the inventory passed from the previous scene
+    this.localInventory = this.scene.settings.data.inventory;
+    console.log("Using passed inventory data:", this.localInventory);
+  }
   
   let defaultZone = zoneList.find(z => z.name === "Village");
   if (!this.scene.settings.data || !this.scene.settings.data.zone) {
@@ -2489,9 +3044,11 @@ function createScene() {
     console.log("Defaulting zone to Village with camping materials.");
   }
 
-  // For testing purposes, add a dungeon key to inventory
-  // Remove this line in production
-  this.localInventory.push({ name: "Dungeon Key", quantity: 1 });
+  // For testing purposes, add a dungeon key to inventory if in village and no dungeon key exists
+  if (this.scene.settings.data.zone.name === "Village" && 
+      !this.localInventory.some(item => item.name === "Dungeon Key")) {
+    this.localInventory.push({ name: "Dungeon Key", quantity: 1 });
+  }
 
   // Initialize narrative screen
   this.narrativeScreen = SCREEN_NONE;
@@ -2764,6 +3321,378 @@ function createScene() {
                   playerStats: this.playerStats
                 });
               });
+            });
+          });
+        } else if (layer.type === "objectgroup" && layer.name === "VillageCommons") {
+          // Process VillageCommons object layer for travel back to village
+          layer.objects.forEach(obj => {
+            // Create travel point hitbox
+            const spot = this.add.rectangle(
+              obj.x * bgScale,
+              obj.y * bgScale,
+              obj.width * bgScale,
+              obj.height * bgScale,
+              0x00ff00,
+              0.1
+            );
+            spot.setOrigin(0, 0);
+            spot.setInteractive();
+            
+            // Add visual indicator
+            const indicator = this.add.circle(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2),
+              15,
+              0x00aa00,
+              0.8
+            );
+            indicator.setStrokeStyle(2, 0x00ff00);
+            indicator.setDepth(900);
+            
+            // Add pulse effect
+            this.tweens.add({
+              targets: indicator,
+              alpha: { from: 0.6, to: 1 },
+              duration: 1500,
+              yoyo: true,
+              repeat: -1
+            });
+            
+            // Add label
+            const label = this.add.text(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2) - 25,
+              "Village Commons",
+              {
+                font: "14px Arial",
+                fill: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 3
+              }
+            ).setOrigin(0.5).setDepth(900);
+            
+            // Add hover effect
+            spot.on('pointerover', () => {
+              indicator.setFillStyle(0x00ff00);
+            });
+            
+            spot.on('pointerout', () => {
+              indicator.setFillStyle(0x00aa00);
+            });
+            
+            // Handle click
+            spot.on('pointerdown', () => {
+              const targetZone = zoneList.find(z => z.name.toLowerCase() === "village");
+              if (targetZone) {
+                showDialog(this, "Return to Village Commons?\n(Press SPACE to confirm)");
+                this.input.keyboard.once("keydown-SPACE", () => {
+                  // Add transition effect
+                  this.cameras.main.fadeOut(500);
+                  this.time.delayedCall(500, () => {
+                    const currentOromozi = this.playerStats.oromozi;
+                    const currentLevel = this.playerStats.level;
+                    const currentExp = this.playerStats.experience;
+                    this.playerStats = createInitialStats(targetZone.name, currentOromozi);
+                    
+                    // Preserve level and experience
+                    if (currentLevel) {
+                      this.playerStats.level = currentLevel;
+                      this.playerStats.experience = currentExp;
+                    }
+                    
+                    this.scene.restart({ 
+                      zone: targetZone, 
+                      inventory: this.localInventory, 
+                      promptCount: 0 
+                    });
+                  });
+                });
+              }
+            });
+          });
+        } else if (layer.type === "objectgroup" && layer.name === "ShadyGrove") {
+          // Process ShadyGrove object layer for travel to Shady Grove if player has the map
+          layer.objects.forEach(obj => {
+            // Create travel point hitbox
+            const spot = this.add.rectangle(
+              obj.x * bgScale,
+              obj.y * bgScale,
+              obj.width * bgScale,
+              obj.height * bgScale,
+              0x008800,
+              0.1
+            );
+            spot.setOrigin(0, 0);
+            spot.setInteractive();
+            
+            // Add visual indicator
+            const indicator = this.add.circle(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2),
+              15,
+              0x005500,
+              0.8
+            );
+            indicator.setStrokeStyle(2, 0x00aa00);
+            indicator.setDepth(900);
+            
+            // Add pulse effect
+            this.tweens.add({
+              targets: indicator,
+              alpha: { from: 0.6, to: 1 },
+              duration: 1500,
+              yoyo: true,
+              repeat: -1
+            });
+            
+            // Add label
+            const label = this.add.text(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2) - 25,
+              "Shady Grove",
+              {
+                font: "14px Arial",
+                fill: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 3
+              }
+            ).setOrigin(0.5).setDepth(900);
+            
+            // Add hover effect
+            spot.on('pointerover', () => {
+              indicator.setFillStyle(0x00aa00);
+            });
+            
+            spot.on('pointerout', () => {
+              indicator.setFillStyle(0x005500);
+            });
+            
+            // Handle click
+            spot.on('pointerdown', () => {
+              // Check if player has Shady Grove Map
+              const hasMap = this.localInventory.some(item => 
+                item.name.toLowerCase() === "shady grove map" && item.quantity > 0
+              );
+              
+              if (hasMap) {
+                const targetZone = zoneList.find(z => z.name === "Shady Grove");
+                if (targetZone) {
+                  showDialog(this, "Travel to Shady Grove?\n(Press SPACE to confirm)");
+                  this.input.keyboard.once("keydown-SPACE", () => {
+                    // Add transition effect
+                    this.cameras.main.fadeOut(500);
+                    this.time.delayedCall(500, () => {
+                      const currentOromozi = this.playerStats.oromozi;
+                      const currentLevel = this.playerStats.level;
+                      const currentExp = this.playerStats.experience;
+                      this.playerStats = createInitialStats(targetZone.name, currentOromozi);
+                      
+                      // Preserve level and experience
+                      if (currentLevel) {
+                        this.playerStats.level = currentLevel;
+                        this.playerStats.experience = currentExp;
+                      }
+                      
+                      this.scene.restart({ 
+                        zone: targetZone, 
+                        inventory: this.localInventory, 
+                        promptCount: 0 
+                      });
+                    });
+                  });
+                }
+              } else {
+                showDialog(this, "You need a Shady Grove Map to travel here.\n(Press SPACE to continue)");
+                this.input.keyboard.once("keydown-SPACE", () => {
+                  hideDialog(this);
+                });
+              }
+            });
+          });
+        } else if (layer.type === "objectgroup" && layer.name === "OuterGrasslands") {
+          // Process OuterGrasslands object layer for travel back to Outer Grasslands
+          layer.objects.forEach(obj => {
+            // Create travel point hitbox
+            const spot = this.add.rectangle(
+              obj.x * bgScale,
+              obj.y * bgScale,
+              obj.width * bgScale,
+              obj.height * bgScale,
+              0x008800,
+              0.1
+            );
+            spot.setOrigin(0, 0);
+            spot.setInteractive();
+            
+            // Add visual indicator
+            const indicator = this.add.circle(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2),
+              15,
+              0x228800,
+              0.8
+            );
+            indicator.setStrokeStyle(2, 0x22cc00);
+            indicator.setDepth(900);
+            
+            // Add pulse effect
+            this.tweens.add({
+              targets: indicator,
+              alpha: { from: 0.6, to: 1 },
+              duration: 1500,
+              yoyo: true,
+              repeat: -1
+            });
+            
+            // Add label
+            const label = this.add.text(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2) - 25,
+              "Outer Grasslands",
+              {
+                font: "14px Arial",
+                fill: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 3
+              }
+            ).setOrigin(0.5).setDepth(900);
+            
+            // Add hover effect
+            spot.on('pointerover', () => {
+              indicator.setFillStyle(0x22cc00);
+            });
+            
+            spot.on('pointerout', () => {
+              indicator.setFillStyle(0x228800);
+            });
+            
+            // Handle click
+            spot.on('pointerdown', () => {
+              const targetZone = zoneList.find(z => z.name === "Outer Grasslands");
+              if (targetZone) {
+                showDialog(this, "Travel to Outer Grasslands?\n(Press SPACE to confirm)");
+                this.input.keyboard.once("keydown-SPACE", () => {
+                  // Add transition effect
+                  this.cameras.main.fadeOut(500);
+                  this.time.delayedCall(500, () => {
+                    const currentOromozi = this.playerStats.oromozi;
+                    const currentLevel = this.playerStats.level;
+                    const currentExp = this.playerStats.experience;
+                    this.playerStats = createInitialStats(targetZone.name, currentOromozi);
+                    
+                    // Preserve level and experience
+                    if (currentLevel) {
+                      this.playerStats.level = currentLevel;
+                      this.playerStats.experience = currentExp;
+                    }
+                    
+                    this.scene.restart({ 
+                      zone: targetZone, 
+                      inventory: this.localInventory, 
+                      promptCount: 0 
+                    });
+                  });
+                });
+              }
+            });
+          });
+        } else if (layer.type === "objectgroup" && layer.name === "AridDesert") {
+          // Process AridDesert object layer for travel to Arid Desert if player has the map
+          layer.objects.forEach(obj => {
+            // Create travel point hitbox
+            const spot = this.add.rectangle(
+              obj.x * bgScale,
+              obj.y * bgScale,
+              obj.width * bgScale,
+              obj.height * bgScale,
+              0x884400,
+              0.1
+            );
+            spot.setOrigin(0, 0);
+            spot.setInteractive();
+            
+            // Add visual indicator
+            const indicator = this.add.circle(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2),
+              15,
+              0xcc6600,
+              0.8
+            );
+            indicator.setStrokeStyle(2, 0xff8800);
+            indicator.setDepth(900);
+            
+            // Add pulse effect
+            this.tweens.add({
+              targets: indicator,
+              alpha: { from: 0.6, to: 1 },
+              duration: 1500,
+              yoyo: true,
+              repeat: -1
+            });
+            
+            // Add label
+            const label = this.add.text(
+              obj.x * bgScale + (obj.width * bgScale / 2),
+              obj.y * bgScale + (obj.height * bgScale / 2) - 25,
+              "Arid Desert",
+              {
+                font: "14px Arial",
+                fill: "#ffffff",
+                stroke: "#000000",
+                strokeThickness: 3
+              }
+            ).setOrigin(0.5).setDepth(900);
+            
+            // Add hover effect
+            spot.on('pointerover', () => {
+              indicator.setFillStyle(0xff8800);
+            });
+            
+            spot.on('pointerout', () => {
+              indicator.setFillStyle(0xcc6600);
+            });
+            
+            // Handle click
+            spot.on('pointerdown', () => {
+              // Check if player has Arid Desert Map
+              const hasMap = this.localInventory.some(item => 
+                item.name.toLowerCase() === "arid desert map" && item.quantity > 0
+              );
+              
+              if (hasMap) {
+                const targetZone = zoneList.find(z => z.name === "Arid Desert");
+                if (targetZone) {
+                  showDialog(this, "Travel to Arid Desert?\n(Press SPACE to confirm)");
+                  this.input.keyboard.once("keydown-SPACE", () => {
+                    // Add transition effect
+                    this.cameras.main.fadeOut(500);
+                    this.time.delayedCall(500, () => {
+                      const currentOromozi = this.playerStats.oromozi;
+                      const currentLevel = this.playerStats.level;
+                      const currentExp = this.playerStats.experience;
+                      this.playerStats = createInitialStats(targetZone.name, currentOromozi);
+                      
+                      // Preserve level and experience
+                      if (currentLevel) {
+                        this.playerStats.level = currentLevel;
+                        this.playerStats.experience = currentExp;
+                      }
+                      
+                      this.scene.restart({ 
+                        zone: targetZone, 
+                        inventory: this.localInventory, 
+                        promptCount: 0 
+                      });
+                    });
+                  });
+                }
+              } else {
+                showDialog(this, "You need an Arid Desert Map to travel here.\n(Press SPACE to continue)");
+                this.input.keyboard.once("keydown-SPACE", () => {
+                  hideDialog(this);
+                });
+              }
             });
           });
         } else if (
@@ -3366,6 +4295,45 @@ function createScene() {
       createScrollableMenu(this, "Camping Prompt", options);
     }
   });
+
+  this.player.anims.play("idle-down", true);
+
+  updateHUD(this);
+  setupFPSCounter(this);
+  
+  // Add a Shady Grove Map to inventory for testing the new travel functionality
+  if (zoneData.name === "Outer Grasslands") {
+    // Check if player already has the map
+    const hasMap = this.localInventory.some(item => 
+      item.name.toLowerCase() === "shady grove map" && item.quantity > 0
+    );
+    
+    // Add map if not already in inventory
+    if (!hasMap) {
+      this.localInventory.push({
+        name: "Shady Grove Map",
+        quantity: 1
+      });
+      console.log("Added Shady Grove Map to inventory for testing");
+    }
+  }
+  
+  // Add an Arid Desert Map to inventory for testing the new travel functionality
+  if (zoneData.name === "Shady Grove") {
+    // Check if player already has the map
+    const hasMap = this.localInventory.some(item => 
+      item.name.toLowerCase() === "arid desert map" && item.quantity > 0
+    );
+    
+    // Add map if not already in inventory
+    if (!hasMap) {
+      this.localInventory.push({
+        name: "Arid Desert Map",
+        quantity: 1
+      });
+      console.log("Added Arid Desert Map to inventory for testing");
+    }
+  }
 }
 
 function spawnMonster() {
@@ -3429,7 +4397,7 @@ function handlePlayerDeath(scene) {
   scene.cameras.main.shake(500, 0.03);
   scene.cameras.main.flash(300, 255, 0, 0);
   
-  showDialog(scene, "You have died!\nYou wake up in Village Commons...\nAll your loot has been lost!");
+  showDialog(scene, "You have died!\nYou wake up in Village Commons...\nAll your items have been lost!");
   
   // Simple death effect
   createSimpleEffect(scene, scene.player.x, scene.player.y, 0xff0000);
@@ -3458,8 +4426,12 @@ function handlePlayerDeath(scene) {
           scene.playerStats.level = currentLevel;
           scene.playerStats.experience = currentExp;
           
-          // FIX 3: Clear inventory when player dies
+          // Clear inventory when player dies
           scene.localInventory = [];
+          
+          // Add starting camping materials
+          scene.localInventory.push({ name: "Cloth", quantity: 1 });
+          scene.localInventory.push({ name: "Stick", quantity: 2 });
           
           scene.scene.restart({ zone: villageZone, inventory: scene.localInventory, fromDeath: true, promptCount: 0 });
         } else {
@@ -3799,11 +4771,47 @@ class MainGameScene extends Phaser.Scene {
   }
 
   create() {
-    // Initialize inventory with camping materials
-    this.localInventory = [
-      { name: "Cloth", quantity: 1 },
-      { name: "Stick", quantity: 2 }
-    ];
+    // Only initialize with default inventory if no scene data passed
+    if (!this.scene.settings.data || !this.scene.settings.data.inventory) {
+      this.localInventory = [
+        { name: "Cloth", quantity: 1 },
+        { name: "Stick", quantity: 2 }
+      ];
+    } else {
+      // Make sure we properly assign the inventory from scene data
+      this.localInventory = this.scene.settings.data.inventory;
+      console.log("Using inventory from scene data:", this.localInventory);
+    }
+    
+    // Add crafting materials for testing if in Village zone
+    if (this.scene.settings.data && 
+        this.scene.settings.data.zone && 
+        this.scene.settings.data.zone.name === "Village") {
+      
+      // Add ingredients to craft multiple items
+      const craftingMaterials = [
+        { name: "Wood", quantity: 5 },
+        { name: "Iron Ore", quantity: 2 },
+        { name: "Stone", quantity: 3 },
+        { name: "Herbs", quantity: 2 },
+        { name: "Water", quantity: 2 },
+        { name: "Vines", quantity: 1 },
+        { name: "Thread", quantity: 2 },
+        { name: "Leather", quantity: 1 }
+      ];
+      
+      // Add each material to inventory, merging with existing quantities
+      craftingMaterials.forEach(material => {
+        const existingItem = this.localInventory.find(item => item.name === material.name);
+        if (existingItem) {
+          existingItem.quantity += material.quantity;
+        } else {
+          this.localInventory.push({ name: material.name, quantity: material.quantity });
+        }
+      });
+      
+      console.log("Added crafting materials to inventory:", this.localInventory);
+    }
     
     createScene.call(this);
   }
@@ -4063,4 +5071,63 @@ function initiateCampingSetup(scene) {
   };
   
   scene.input.keyboard.on('keydown-ESC', escHandler);
+}
+
+// Added function to calculate battle statistics based on player state
+function calculateBattleStats(scene) {
+  if (!scene || !scene.playerStats) {
+    // Return default values if scene or playerStats not available
+    return { attack: 10, defense: 5 };
+  }
+  
+  // Base stats that scale with level
+  const baseAttack = 10 + (scene.playerStats.level - 1) * 2;
+  const baseDefense = 5 + (scene.playerStats.level - 1);
+  
+  // Add any equipped item bonuses (if available)
+  const attackBonus = scene.playerStats.attackBonus || 0;
+  const defenseBonus = scene.playerStats.defenseBonus || 0;
+  
+  return {
+    attack: baseAttack + attackBonus,
+    defense: baseDefense + defenseBonus
+  };
+}
+
+// Add function to setup FPS counter for debugging
+function setupFPSCounter(scene) {
+  // Check if we're in development mode or should show FPS
+  const showFPS = false; // Set to true to enable FPS counter
+  
+  if (showFPS && scene.add) {
+    try {
+      scene.fpsText = scene.add.text(
+        scene.cameras.main.width - 60, 
+        5, 
+        'FPS: --', 
+        { 
+          font: '12px Arial', 
+          fill: '#ffff00',
+          stroke: '#000000',
+          strokeThickness: 1
+        }
+      );
+      scene.fpsText.setScrollFactor(0);
+      scene.fpsText.setDepth(9999);
+      
+      // Update FPS every 500ms
+      scene.time.addEvent({
+        delay: 500,
+        callback: () => {
+          if (scene.fpsText && scene.game) {
+            scene.fpsText.setText(`FPS: ${Math.round(scene.game.loop.actualFps)}`);
+          }
+        },
+        callbackScope: scene,
+        loop: true
+      });
+    } catch (error) {
+      console.warn("Error setting up FPS counter:", error);
+    }
+  }
 }

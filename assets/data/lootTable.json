@@ -14,6 +14,19 @@
         "canDeposit": true
       },
       {
+        "name": "Shady Grove Map",
+        "type": "Key Item",
+        "statEffects": {},
+        "value": 80,
+        "rarity": "Rare",
+        "weight": 0.1,
+        "stackLimit": 1,
+        "isStackable": false,
+        "isEquippable": false,
+        "canDeposit": false,
+        "description": "A weathered map showing the path to Shady Grove. Required to travel there."
+      },
+      {
         "name": "Dungeon Key",
         "type": "Key Item",
         "statEffects": {},
@@ -77,6 +90,19 @@
       }
     ],
     "Shady Grove": [
+      {
+        "name": "Arid Desert Map",
+        "type": "Key Item",
+        "statEffects": {},
+        "value": 80,
+        "rarity": "Rare",
+        "weight": 0.1,
+        "stackLimit": 1,
+        "isStackable": false,
+        "isEquippable": false,
+        "canDeposit": false,
+        "description": "A weathered map showing the path to the Arid Desert. Required to travel there."
+      },
       {
         "name": "Pebble",
         "type": "Collectable",
