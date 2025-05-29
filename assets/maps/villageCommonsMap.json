@@ -295,6 +295,17 @@
                  "width":254.32255337138,
                  "x":830.606637074614,
                  "y":1149.86260832805
+                }, 
+                {
+                 "height":183.732057416268,
+                 "id":88,
+                 "name":"artisans_alley",
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":210.751477624543,
+                 "x":1750.8584294962,
+                 "y":459.33014354067
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -303,10 +314,10 @@
          "y":0
         }],
  "nextlayerid":5,
- "nextobjectid":88,
+ "nextobjectid":89,
  "orientation":"orthogonal",
  "renderorder":"right-down",
- "tiledversion":"1.11.1",
+ "tiledversion":"1.11.2",
  "tileheight":32,
  "tilesets":[],
  "tilewidth":32,
