@@ -1,0 +1,277 @@
+{
+  "compressionlevel": -1,
+  "height": 40,
+  "infinite": false,
+  "layers": [
+    {
+      "id": 1,
+      "image": "../backgrounds/artisanAlley.png",
+      "imageheight": 1297,
+      "imagewidth": 1920,
+      "name": "artisanAlleyBackground",
+      "opacity": 1,
+      "type": "imagelayer",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 2,
+      "name": "Object Layer 1",
+      "objects": [
+        {
+          "height": 50,
+          "id": 1,
+          "name": "bottom-wall",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 1920,
+          "x": 0,
+          "y": 1220
+        },
+        {
+          "height": 1300,
+          "id": 2,
+          "name": "left-wall",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 50,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 1300,
+          "id": 3,
+          "name": "right-wall",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 50,
+          "x": 1870,
+          "y": 0
+        },
+        {
+          "height": 50,
+          "id": 9,
+          "name": "top-wall",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 1920,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 150,
+          "id": 13,
+          "name": "character-studio-barrier",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 250,
+          "x": 150,
+          "y": 100
+        },
+        {
+          "height": 150,
+          "id": 14,
+          "name": "fashion-studio-barrier",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 200,
+          "x": 350,
+          "y": 150
+        },
+        {
+          "height": 150,
+          "id": 15,
+          "name": "design-studio-barrier",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 200,
+          "x": 500,
+          "y": 100
+        },
+        {
+          "height": 150,
+          "id": 16,
+          "name": "music-studio-barrier",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 200,
+          "x": 400,
+          "y": 300
+        },
+        {
+          "height": 200,
+          "id": 17,
+          "name": "central-building",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 400,
+          "x": 800,
+          "y": 500
+        },
+        {
+          "height": 250,
+          "id": 18,
+          "name": "left-building",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 300,
+          "x": 300,
+          "y": 800
+        },
+        {
+          "height": 250,
+          "id": 19,
+          "name": "right-building",
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 300,
+          "x": 1200,
+          "y": 800
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 3,
+      "name": "interactions",
+      "objects": [
+        {
+          "height": 68.46,
+          "id": 4,
+          "name": "character_studio",
+          "properties": [
+            {
+              "name": "interaction",
+              "type": "bool",
+              "value": true
+            }
+          ],
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 71.2,
+          "x": 200,
+          "y": 150
+        },
+        {
+          "height": 84.89,
+          "id": 5,
+          "name": "fashion_studio",
+          "properties": [
+            {
+              "name": "interaction",
+              "type": "bool",
+              "value": true
+            }
+          ],
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 136.92,
+          "x": 350,
+          "y": 200
+        },
+        {
+          "height": 84.89,
+          "id": 6,
+          "name": "design_studio",
+          "properties": [
+            {
+              "name": "interaction",
+              "type": "bool",
+              "value": true
+            }
+          ],
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 169.79,
+          "x": 500,
+          "y": 150
+        },
+        {
+          "height": 104.06,
+          "id": 7,
+          "name": "music_studio",
+          "properties": [
+            {
+              "name": "interaction",
+              "type": "bool",
+              "value": true
+            }
+          ],
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 131.45,
+          "x": 400,
+          "y": 300
+        },
+        {
+          "height": 68.46,
+          "id": 8,
+          "name": "return_to_village",
+          "properties": [
+            {
+              "name": "interaction",
+              "type": "bool",
+              "value": true
+            }
+          ],
+          "rotation": 0,
+          "type": "",
+          "visible": true,
+          "width": 71.2,
+          "x": 100,
+          "y": 400
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": 4,
+      "image": "../foregrounds/artisanAlleyForeground.png",
+      "imageheight": 1297,
+      "imagewidth": 1920,
+      "name": "artisanAlleyForeground",
+      "opacity": 1,
+      "type": "imagelayer",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "nextlayerid": 5,
+  "nextobjectid": 9,
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "tiledversion": "1.11.2",
+  "tileheight": 32,
+  "tilesets": [],
+  "tilewidth": 32,
+  "type": "map",
+  "version": "1.10",
+  "width": 60
+} 

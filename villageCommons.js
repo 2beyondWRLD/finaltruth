@@ -36,7 +36,7 @@ const GAME_CONFIG = {
     default: "arcade",
     arcade: { gravity: { y: 0 }, debug: false }
   },
-  scene: [MainGameScene, CampingScene, FishingScene], // Added all scenes
+  scene: [MainGameScene, CampingScene, FishingScene, ArtisanAlleyScene], // Added ArtisanAlleyScene
   pixelArt: true,
   roundPixels: true,
   render: {
@@ -468,6 +468,22 @@ function handleVillageContractInteraction(scene, obj) {
         scene.scene.restart({ zone: targetZone, inventory: scene.localInventory, promptCount: 0 });
       });
       break;
+    case "artisans_alley":
+      showDialog(scene, "Enter Artisans\nAlley?\nA place to create and customize items using Oromozi.\n(Press SPACE to confirm)");
+      scene.input.keyboard.once("keydown-SPACE", () => {
+        console.log("Attempting to start ArtisanAlleyScene");
+        try {
+          scene.scene.start('ArtisanAlleyScene', {
+            zone: 'Village', 
+            playerStats: scene.playerStats,
+            inventory: scene.localInventory
+          });
+          console.log("ArtisanAlleyScene started successfully");
+        } catch (error) {
+          console.error("Error starting ArtisanAlleyScene:", error);
+        }
+      });
+      break;
     default:
       console.log("Unknown interaction:", obj.name);
   }
@@ -518,6 +534,9 @@ function createScene() {
           interactiveObj.setInteractive();
           interactiveObj.on("pointerdown", () => handleVillageContractInteraction(this, obj));
           this.interactionObjects.add(interactiveObj);
+          
+          // Add a visible label for the interaction point
+          addInteractionLabel(this, obj.name, obj.x * BG_SCALE, obj.y * BG_SCALE, obj.width * BG_SCALE, obj.height * BG_SCALE);
         });
       }
     });
@@ -787,4 +806,34 @@ function upgradeSkill(scene, skill) {
   } else {
     showDialog(scene, `Not enough Oromozi! Need ${cost} but only have ${scene.playerStats.oromozi}`);
   }
+}
+
+function addInteractionLabel(scene, name, x, y, width, height) {
+  // Format the label name
+  let displayName = name.replace(/_/g, ' ');
+  
+  // Capitalize first letter of each word
+  displayName = displayName.split(' ').map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1)
+  ).join(' ');
+  
+  // Special case for Artisans Alley - add line break
+  if (name === 'artisans_alley') {
+    displayName = "Artisans\nAlley";
+  }
+  
+  // Create the label with background for better visibility
+  const textBg = scene.add.rectangle(x + width/2, y - 15, 120, 30, 0x000000, 0.5);
+  textBg.setDepth(199);
+  
+  const label = scene.add.text(x + width/2, y - 15, displayName, { 
+    font: "14px Arial", 
+    fill: "#ffffff",
+    stroke: "#000000",
+    strokeThickness: 2,
+    align: 'center'
+  });
+  
+  label.setOrigin(0.5, 0.5);
+  label.setDepth(200);
 }
