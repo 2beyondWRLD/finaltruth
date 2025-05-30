@@ -1911,6 +1911,9 @@ function handleVillageContractInteraction(scene, obj) {
     case "trading_post":
       showTradingPostOptions(scene);
       break;
+    case "tinkers_lab":
+      showTinkerersLabOptions(scene);
+      break;
     case "crafting_workshop":
       // Add crafting materials directly when accessing the crafting workshop
       const craftingMaterials = [
@@ -1954,6 +1957,27 @@ function handleVillageContractInteraction(scene, obj) {
     case "dungeon_entrance":
       handleDungeonEntrance(scene);
       break;
+    case "artisans_alley":
+      console.log("Attempting to start ArtisanAlleyScene");
+      showDialog(scene, "Enter Artisan Alley?\nA place to create and customize items using Oromozi.\n(Press SPACE to confirm)");
+      scene.input.keyboard.once("keydown-SPACE", () => {
+        try {
+          // Add transition effect
+          scene.cameras.main.fadeOut(500);
+          scene.time.delayedCall(500, () => {
+            console.log("Starting ArtisanAlleyScene with inventory:", scene.localInventory);
+            scene.scene.start('ArtisanAlleyScene', {
+              zone: 'Village', 
+              playerStats: scene.playerStats,
+              inventory: scene.localInventory
+            });
+          });
+          console.log("ArtisanAlleyScene started successfully");
+        } catch (error) {
+          console.error("Error starting ArtisanAlleyScene:", error);
+        }
+      });
+      break;
     case "scavenger_mode":
       console.log("Entering Scavenger Mode...");
       showDialog(scene, "Enter Scavenger Mode with your current inventory?\n(Press SPACE to confirm)");
@@ -1971,32 +1995,6 @@ function handleVillageContractInteraction(scene, obj) {
           console.warn("Outer Grasslands zone not found!");
         }
       });
-      break;
-    case "camping_mode":
-      console.log("Entering Camping Mode...");
-      const gameTime = scene.registry.get('gameTime');
-      const gameHour = (6 + Math.floor(gameTime / scene.secondsPerHour)) % 24;
-      const isNearNight = gameHour >= 18 && gameHour < 20;
-      const isNight = gameHour >= 20 || gameHour < 6;
-      
-      if (isNearNight || isNight) {
-        showDialog(scene, `It's ${isNearNight ? "getting dark" : "night"}, do you want to set up camp?\n(Press SPACE to confirm)`);
-        scene.input.keyboard.once("keydown-SPACE", () => {
-          if (hasCampingMaterials(scene)) {
-            initiateCampingSetup(scene);
-          } else {
-            showDialog(scene, "You need 2 sticks and 1 cloth to set up camp.\n(Press SPACE to continue)");
-            scene.input.keyboard.once("keydown-SPACE", () => {
-              hideDialog(scene);
-            });
-          }
-        });
-      } else {
-        showDialog(scene, "You can only set up camp during near-night (6:00 PM - 8:00 PM) or night (8:00 PM - 6:00 AM).\n(Press SPACE to continue)");
-        scene.input.keyboard.once("keydown-SPACE", () => {
-          hideDialog(scene);
-        });
-      }
       break;
   }
 }
@@ -4959,7 +4957,7 @@ const config = {
     maxWidth: 800,
     maxHeight: 600
   },
-  scene: [MenuScene, MainGameScene, CampingScene, FishingScene, DungeonScene]
+  scene: [MenuScene, MainGameScene, CampingScene, FishingScene, DungeonScene, ArtisanAlleyScene]
 };
 
 // Wait for document to be fully loaded before creating the game
