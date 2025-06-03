@@ -49,6 +49,7 @@ class ArtisanAlleyScene extends Phaser.Scene {
       notes: ['C', 'D', 'E', 'F', 'G', 'A', 'B']
     };
     this.debugCollision = true; // Enable collision debugging by default for testing
+    this.contextMenuItems = []; // Add property to store context menu items
   }
 
   init(data) {
@@ -329,14 +330,8 @@ class ArtisanAlleyScene extends Phaser.Scene {
         break;
       
       case 'design_studio':
-        // Open the Design Studio directly
-        // First choose theme, user will then pick material
-        this.showDialog(`Choose a design theme:`);
-        const designOptions = this.customizationOptions.designThemes.map(theme => ({
-          label: `${theme}`,
-          callback: () => this.chooseDesignMaterial(theme)
-        }));
-        this.createButtons(designOptions);
+        // Open the enhanced Design Studio with object type selection
+        this.openDesignStudioTypeSelection();
         break;
       
       default:
@@ -1803,6 +1798,11 @@ class ArtisanAlleyScene extends Phaser.Scene {
   closeCurrentScreen() {
     this.hideDialog();
     this.currentScreen = 'none';
+    
+    // Make sure to clear any context menus when closing screens
+    if (this.clearContextMenu) {
+      this.clearContextMenu();
+    }
   }
   
   returnToVillage() {
@@ -2114,9 +2114,11 @@ class ArtisanAlleyScene extends Phaser.Scene {
     this.currentScreen = 'music_daw';
     
     // Create a properly sized dialog for the polyphonic DAW that fits in viewport
-    const boxW = 480, boxH = 360; // Reduced from 600x450
-    const boxX = (this.game.config.width - boxW) / 2;
-    const boxY = (this.game.config.height - boxH) / 2;
+    // Scale down dimensions by 15%
+    const boxW = Math.floor(480 * 0.85);
+    const boxH = Math.floor(360 * 0.85);
+    const boxX = Math.floor((this.game.config.width - boxW) / 2);
+    const boxY = Math.floor((this.game.config.height - boxH) / 2);
     
     // Clear previous dialog
     this.dialogBg.clear();
@@ -2126,7 +2128,7 @@ class ArtisanAlleyScene extends Phaser.Scene {
     
     // Add title
     const title = this.add.text(boxX + boxW/2, boxY + 10, '🎵 POLYPHONIC DAW', 
-      { font: '14px Arial', fill: '#ffffff', align: 'center' }
+      { font: '12px Arial', fill: '#ffffff', align: 'center' }
     ).setOrigin(0.5).setDepth(1601).setScrollFactor(0);
     this.buttons.push(title);
     
@@ -2137,39 +2139,51 @@ class ArtisanAlleyScene extends Phaser.Scene {
         color: 0xFF0000, 
         notes: ['C2', 'D2', 'E2', 'F2', 'G2', 'A2', 'B2', 'C3'],
         waveform: 'square',
-        volume: 0.8
+        volume: 0.8,
+        instruments: ['BASS', 'SUB', 'PLUCK', 'SYNTH']
       },
       { 
         name: 'SYNTH', 
         color: 0x00FF00, 
         notes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'],
         waveform: 'sawtooth',
-        volume: 0.6
+        volume: 0.6,
+        instruments: ['SYNTH', 'LEAD', 'ARP', 'KEYS']
       },
       { 
         name: 'DRUMS', 
         color: 0xFFFF00, 
         notes: ['Kick', 'Snare', 'HiHat', 'Crash', 'Tom1', 'Tom2', 'Ride', 'Clap'],
         waveform: 'square',
-        volume: 1.0
+        volume: 1.0,
+        instruments: ['DRUMS', 'ACOUSTIC', 'ELECTRO', 'PERCUSSION']
       },
       { 
         name: 'PAD', 
         color: 0x00FFFF, 
         notes: ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3', 'C4'],
         waveform: 'sine',
-        volume: 0.4
+        volume: 0.4,
+        instruments: ['PAD', 'STRINGS', 'AMBIENT', 'CHOIR', 'AURA', 'SHIMMER']
       }
     ];
     
     // Track tab system
     let activeTrack = 0;
-    const tabHeight = 25; // Reduced from 30
+    const tabHeight = 22; // Reduced from 25
     const tabWidth = boxW / 4;
     
     // Create track tabs
     const trackTabs = [];
+    
+    // Track for double-click detection
+    const clickTimers = [null, null, null, null];
+    
+    // Create tooltip for instructions
+    let tooltipText = null;
+    
     tracks.forEach((track, index) => {
+      // Create tab background
       const tab = this.add.rectangle(
         boxX + index * tabWidth, 
         boxY + 25, // Moved up
@@ -2178,36 +2192,230 @@ class ArtisanAlleyScene extends Phaser.Scene {
         index === activeTrack ? track.color : 0x444444
       ).setOrigin(0, 0).setDepth(1601).setScrollFactor(0);
       
+      // Add tab label
       const tabLabel = this.add.text(
-        boxX + index * tabWidth + tabWidth/2, 
+        boxX + index * tabWidth + tabWidth/2 - 10, // Moved left to make room for arrow
         boxY + 25 + tabHeight/2, 
         track.name, 
-        { font: '10px Arial', fill: '#000000', align: 'center' }
-      ).setOrigin(0.5).setDepth(1602).setScrollFactor(0);
+        { font: '9px Arial', fill: '#000000', align: 'center' }
+      ).setOrigin(0.5, 0.5).setDepth(1602).setScrollFactor(0);
       
-      // Make tab interactive
-      tab.setInteractive().on('pointerdown', () => {
-        // Switch active track
-        activeTrack = index;
-        
-        // Update tab visuals
-        trackTabs.forEach((t, i) => {
-          t.tab.setFillStyle(i === activeTrack ? tracks[i].color : 0x444444);
-        });
-        
-        // Update sequencer grid visibility
-        updateGridVisibility();
+      // Add a visible button background for the arrow
+      const arrowBg = this.add.rectangle(
+        boxX + index * tabWidth + tabWidth - 15,
+        boxY + 25 + tabHeight/2,
+        16,
+        16,
+        0xFFFFFF,
+        0.5
+      ).setOrigin(0.5, 0.5).setDepth(1601).setScrollFactor(0)
+        .setStrokeStyle(1, 0x000000)
+        .setInteractive({ useHandCursor: true });
+      
+      // Add dropdown arrow
+      const arrowBtn = this.add.text(
+        boxX + index * tabWidth + tabWidth - 15, 
+        boxY + 25 + tabHeight/2, 
+        '▼', // Unicode down arrow
+        { font: '10px Arial', fill: '#000000', align: 'center', fontStyle: 'bold' }
+      ).setOrigin(0.5, 0.5).setDepth(1602).setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+      
+      // Make tab interactive for track selection
+      tab.setInteractive({ useHandCursor: true })
+         .on('pointerdown', () => {
+           // Switch active track
+           activeTrack = index;
+           
+           // Update tab visuals
+           trackTabs.forEach((t, i) => {
+             t.tab.setFillStyle(i === activeTrack ? tracks[i].color : 0x444444);
+           });
+           
+           // Update sequencer grid visibility
+           updateGridVisibility();
+         });
+      
+      // Make arrow button interactive for instrument selection
+      arrowBtn.on('pointerdown', () => {
+        showInstrumentMenu(index);
+      })
+      .on('pointerover', () => {
+        arrowBg.setFillStyle(0xFFFFFF, 0.8);
+      })
+      .on('pointerout', () => {
+        arrowBg.setFillStyle(0xFFFFFF, 0.5);
       });
       
-      trackTabs.push({ tab, label: tabLabel });
-      this.buttons.push(tab, tabLabel);
+      arrowBg.on('pointerdown', () => {
+        showInstrumentMenu(index);
+      })
+      .on('pointerover', () => {
+        arrowBg.setFillStyle(0xFFFFFF, 0.8);
+      })
+      .on('pointerout', () => {
+        arrowBg.setFillStyle(0xFFFFFF, 0.5);
+      });
+      
+      trackTabs.push({ tab, label: tabLabel, arrow: arrowBtn, arrowBg });
+      this.buttons.push(tab, tabLabel, arrowBtn, arrowBg);
     });
+
+    // Function to show instrument selection menu
+    const showInstrumentMenu = (trackIndex) => {
+      // Create a menu background
+      const menuWidth = 100; // Reduced from 120
+      const menuHeight = tracks[trackIndex].instruments.length * 17 + 10; // Reduced from 20px per item
+      
+      // Position menu - handle positioning for the PAD track specially to ensure visibility
+      let menuX, menuY;
+      
+      // For the last tab (PAD), position dropdown to the left to keep it in view
+      if (trackIndex === 3) { // PAD is the 4th track (index 3)
+        menuX = boxX + (trackIndex * tabWidth) - (menuWidth/2);
+        menuY = boxY + 25 + tabHeight + 5;
+      } else {
+        menuX = boxX + trackIndex * tabWidth + (tabWidth - menuWidth)/2;
+        menuY = boxY + 25 + tabHeight + 5; // 5px gap below the tab
+      }
+      
+      // Ensure menu doesn't go off screen
+      menuX = Math.max(5, Math.min(menuX, this.game.config.width - menuWidth - 5));
+      
+      // Remove any existing context menu
+      this.clearContextMenu();
+      
+      // Highlight the arrow button when menu is open
+      trackTabs[trackIndex].arrowBg.setFillStyle(tracks[trackIndex].color, 0.8);
+      trackTabs[trackIndex].arrow.setColor('#FFFFFF');
+      
+      // Create menu background with rounded corners
+      const menuBg = this.add.rectangle(
+        menuX, 
+        menuY, 
+        menuWidth, 
+        menuHeight, 
+        0x222222, 
+        0.95
+      ).setOrigin(0, 0).setDepth(1700).setScrollFactor(0)
+       .setStrokeStyle(2, tracks[trackIndex].color);
+      
+      // Add a little triangle pointer at the top of the menu
+      const triangleSize = 6; // Reduced from 8
+      let triangleX;
+      
+      // Adjust triangle position for PAD track
+      if (trackIndex === 3) {
+        triangleX = boxX + trackIndex * tabWidth + tabWidth - 15;
+      } else {
+        triangleX = boxX + trackIndex * tabWidth + tabWidth - 15; // Position directly below the arrow
+      }
+      
+      // Create triangle pointing up
+      const triangle = this.add.polygon(
+        triangleX,
+        menuY,
+        [
+          { x: -triangleSize, y: -triangleSize },
+          { x: triangleSize, y: -triangleSize },
+          { x: 0, y: 0 }
+        ],
+        tracks[trackIndex].color
+      ).setDepth(1700).setScrollFactor(0);
+      
+      // Create menu title
+      const menuTitle = this.add.text(
+        menuX + menuWidth/2, 
+        menuY + 5, 
+        'Select Instrument', 
+        { font: '9px Arial', fill: '#ffffff', align: 'center', fontStyle: 'bold' }
+      ).setOrigin(0.5, 0).setDepth(1701).setScrollFactor(0);
+      
+      // Track menu items for cleanup
+      this.contextMenuItems = [menuBg, menuTitle, triangle];
+      
+      // Create menu options
+      tracks[trackIndex].instruments.forEach((instrument, idx) => {
+        // Menu item background that highlights on hover
+        const optionBg = this.add.rectangle(
+          menuX + 5,
+          menuY + 22 + idx * 17 - 2, // Adjusted spacing
+          menuWidth - 10,
+          15, // Reduced height
+          instrument === tracks[trackIndex].name ? tracks[trackIndex].color : 0x333333,
+          instrument === tracks[trackIndex].name ? 0.5 : 0.3
+        ).setOrigin(0, 0).setDepth(1701).setScrollFactor(0)
+         .setInteractive({ useHandCursor: true });
+        
+        const option = this.add.text(
+          menuX + menuWidth/2, 
+          menuY + 22 + idx * 17 + 6, // Adjusted spacing
+          instrument, 
+          { 
+            font: '9px Arial', // Reduced from 12px
+            fill: instrument === tracks[trackIndex].name ? '#ffffff' : '#cccccc', 
+            align: 'center'
+          }
+        ).setOrigin(0.5, 0.5).setDepth(1702).setScrollFactor(0);
+        
+        // Handle instrument selection
+        optionBg.on('pointerdown', () => {
+          // Change the instrument
+          tracks[trackIndex].name = instrument;
+          
+          // Update the tab label
+          trackTabs[trackIndex].label.setText(instrument);
+          
+          // Clear the menu
+          this.clearContextMenu();
+          
+          // Reset arrow button style
+          trackTabs[trackIndex].arrowBg.setFillStyle(0xFFFFFF, 0.5);
+          trackTabs[trackIndex].arrow.setColor('#000000');
+        })
+        .on('pointerover', () => {
+          optionBg.setFillStyle(tracks[trackIndex].color, 0.7);
+          option.setColor('#ffffff');
+        })
+        .on('pointerout', () => {
+          if (instrument === tracks[trackIndex].name) {
+            optionBg.setFillStyle(tracks[trackIndex].color, 0.5);
+            option.setColor('#ffffff');
+          } else {
+            optionBg.setFillStyle(0x333333, 0.3);
+            option.setColor('#cccccc');
+          }
+        });
+        
+        this.contextMenuItems.push(optionBg, option);
+      });
+      
+      // Add click outside to close menu
+      const closeMenu = this.add.rectangle(0, 0, this.game.config.width, this.game.config.height, 0x000000, 0.01)
+        .setOrigin(0, 0).setDepth(1699).setScrollFactor(0).setInteractive();
+      closeMenu.on('pointerdown', () => {
+        // Reset arrow button style
+        trackTabs[trackIndex].arrowBg.setFillStyle(0xFFFFFF, 0.5);
+        trackTabs[trackIndex].arrow.setColor('#000000');
+        
+        this.clearContextMenu();
+      });
+      this.contextMenuItems.push(closeMenu);
+    };
     
-    // Sequencer grid setup - made more compact
-    const gridStartX = boxX + 40; // Reduced margin
-    const gridStartY = boxY + 60; // Moved up
-    const cellWidth = 24; // Reduced from 30
-    const cellHeight = 20; // Reduced from 25
+    // Function to clear the context menu
+    this.clearContextMenu = () => {
+      if (this.contextMenuItems && this.contextMenuItems.length > 0) {
+        this.contextMenuItems.forEach(item => item.destroy());
+        this.contextMenuItems = [];
+      }
+    };
+    
+    // Sequencer grid setup - made more compact for 85% scale
+    const gridStartX = boxX + 35; // Adjusted position
+    const gridStartY = boxY + 55; // Adjusted position
+    const cellWidth = 20; // Reduced from 24
+    const cellHeight = 17; // Reduced from 20
     const gridCols = 16; // 16 steps
     const gridRows = 8; // 8 notes per track
     
@@ -2215,9 +2423,9 @@ class ArtisanAlleyScene extends Phaser.Scene {
     for (let col = 0; col < gridCols; col++) {
       const stepLabel = this.add.text(
         gridStartX + col * cellWidth + cellWidth/2, 
-        gridStartY - 12, 
+        gridStartY - 10, 
         (col + 1).toString(), 
-        { font: '8px Arial', fill: '#ffffff', align: 'center' }
+        { font: '7px Arial', fill: '#ffffff', align: 'center' }
       ).setOrigin(0.5).setDepth(1601).setScrollFactor(0);
       this.buttons.push(stepLabel);
       
@@ -2255,10 +2463,10 @@ class ArtisanAlleyScene extends Phaser.Scene {
       const noteLabels = [];
       track.notes.forEach((note, noteIndex) => {
         const label = this.add.text(
-          gridStartX - 30, 
+          gridStartX - 25, 
           gridStartY + noteIndex * cellHeight + cellHeight/2, 
           note, 
-          { font: '8px Arial', fill: '#ffffff', align: 'center' }
+          { font: '7px Arial', fill: '#ffffff', align: 'center' }
         ).setOrigin(0.5).setDepth(1601).setScrollFactor(0);
         
         label.setVisible(trackIndex === activeTrack);
@@ -2332,7 +2540,7 @@ class ArtisanAlleyScene extends Phaser.Scene {
     updateGridVisibility();
     
     // Create playback controls - positioned more compactly
-    const controlY = gridStartY + gridRows * cellHeight + 20; // Reduced spacing
+    const controlY = gridStartY + gridRows * cellHeight + 15; // Reduced spacing
     
     // Playback state
     let isPlaying = false;
@@ -2353,47 +2561,47 @@ class ArtisanAlleyScene extends Phaser.Scene {
     this.buttons.push(playbackMarker);
     
     // Play button
-    const playBtn = this.add.text(gridStartX, controlY, '▶ PLAY', { font: '12px Arial', fill: '#00FF00' })
+    const playBtn = this.add.text(gridStartX, controlY, '▶ PLAY', { font: '9px Arial', fill: '#00FF00' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
     // Stop button
-    const stopBtn = this.add.text(gridStartX + 65, controlY, '■ STOP', { font: '12px Arial', fill: '#FF0000' })
+    const stopBtn = this.add.text(gridStartX + 55, controlY, '■ STOP', { font: '9px Arial', fill: '#FF0000' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
     // Loop button
-    const loopBtn = this.add.text(gridStartX + 125, controlY, '↻ LOOP', { font: '12px Arial', fill: '#FFFF00' })
+    const loopBtn = this.add.text(gridStartX + 105, controlY, '↻ LOOP', { font: '9px Arial', fill: '#FFFF00' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
     // BPM controls
-    const bpmLabel = this.add.text(gridStartX + 190, controlY, 'BPM:', { font: '12px Arial', fill: '#ffffff' })
+    const bpmLabel = this.add.text(gridStartX + 160, controlY, 'BPM:', { font: '9px Arial', fill: '#ffffff' })
       .setDepth(1602).setScrollFactor(0);
     
-    const bpmValue = this.add.text(gridStartX + 230, controlY, bpm.toString(), { font: '12px Arial', fill: '#ffffff' })
+    const bpmValue = this.add.text(gridStartX + 190, controlY, bpm.toString(), { font: '9px Arial', fill: '#ffffff' })
       .setDepth(1602).setScrollFactor(0);
     
-    const bpmDec = this.add.text(gridStartX + 215, controlY, '◀', { font: '12px Arial', fill: '#ffffff' })
+    const bpmDec = this.add.text(gridStartX + 180, controlY, '◀', { font: '9px Arial', fill: '#ffffff' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
-    const bpmInc = this.add.text(gridStartX + 260, controlY, '▶', { font: '12px Arial', fill: '#ffffff' })
+    const bpmInc = this.add.text(gridStartX + 215, controlY, '▶', { font: '9px Arial', fill: '#ffffff' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
     this.buttons.push(playBtn, stopBtn, loopBtn, bpmLabel, bpmValue, bpmDec, bpmInc);
     
     // Preset patterns for quick start - moved to single row
-    const presetY = controlY + 25;
-    const presetLabel = this.add.text(gridStartX, presetY, 'PRESETS:', { font: '10px Arial', fill: '#ffffff' })
+    const presetY = controlY + 20;
+    const presetLabel = this.add.text(gridStartX, presetY, 'PRESETS:', { font: '8px Arial', fill: '#ffffff' })
       .setDepth(1602).setScrollFactor(0);
     
-    const kickDrumBtn = this.add.text(gridStartX + 60, presetY, 'KICK', { font: '9px Arial', fill: '#FFFF99' })
+    const kickDrumBtn = this.add.text(gridStartX + 50, presetY, 'KICK', { font: '8px Arial', fill: '#FFFF99' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
-    const bassLineBtn = this.add.text(gridStartX + 100, presetY, 'BASS', { font: '9px Arial', fill: '#FFFF99' })
+    const bassLineBtn = this.add.text(gridStartX + 85, presetY, 'BASS', { font: '8px Arial', fill: '#FFFF99' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
-    const chordBtn = this.add.text(gridStartX + 140, presetY, 'CHORD', { font: '9px Arial', fill: '#FFFF99' })
+    const chordBtn = this.add.text(gridStartX + 120, presetY, 'CHORD', { font: '8px Arial', fill: '#FFFF99' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
-    const clearBtn = this.add.text(gridStartX + 185, presetY, 'CLEAR', { font: '9px Arial', fill: '#FF9999' })
+    const clearBtn = this.add.text(gridStartX + 160, presetY, 'CLEAR', { font: '8px Arial', fill: '#FF9999' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
     this.buttons.push(presetLabel, kickDrumBtn, bassLineBtn, chordBtn, clearBtn);
@@ -2401,10 +2609,10 @@ class ArtisanAlleyScene extends Phaser.Scene {
     // Main control buttons
     const buttonY = boxY + boxH - 25; // Positioned near bottom
     
-    const saveBtn = this.add.text(boxX + boxW - 120, buttonY, 'SAVE TRACK', { font: '12px Arial', fill: '#00FF00' })
+    const saveBtn = this.add.text(boxX + boxW - 100, buttonY, 'SAVE TRACK', { font: '10px Arial', fill: '#00FF00' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
-    const cancelBtn = this.add.text(boxX + boxW - 50, buttonY, 'EXIT', { font: '12px Arial', fill: '#FF0000' })
+    const cancelBtn = this.add.text(boxX + boxW - 40, buttonY, 'EXIT', { font: '10px Arial', fill: '#FF0000' })
       .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
     this.buttons.push(saveBtn, cancelBtn);
@@ -2564,32 +2772,97 @@ class ArtisanAlleyScene extends Phaser.Scene {
 
       const now = this.audioContext.currentTime;
       
-      if (track.name === 'DRUMS') {
+      // Handle drum instruments
+      if (track.name === 'DRUMS' || track.name === 'ACOUSTIC' || track.name === 'ELECTRO' || track.name === 'PERCUSSION') {
         // 808-style drum machine sounds
         switch(noteIndex) {
           case 0: // Kick
-            this.play808Kick(now, duration, volume);
+            if (track.name === 'ELECTRO') {
+              this.play808Kick(now, duration, volume * 1.2, 120); // More electronic kick
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808Kick(now, duration, volume, 80); // Softer, more acoustic-like kick
+            } else if (track.name === 'PERCUSSION') {
+              this.play808Tom(now, duration, volume, 60); // Use tom for percussion
+            } else {
+              this.play808Kick(now, duration, volume);
+            }
             break;
           case 1: // Snare
-            this.play808Snare(now, duration, volume);
+            if (track.name === 'ELECTRO') {
+              this.play808Snare(now, duration, volume * 1.2, 0.7); // Sharper snare
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808Snare(now, duration, volume, 0.3); // More resonant snare
+            } else if (track.name === 'PERCUSSION') {
+              this.play808Clap(now, duration, volume); // Use clap for percussion
+            } else {
+              this.play808Snare(now, duration, volume);
+            }
             break;
           case 2: // HiHat
-            this.play808HiHat(now, duration, volume);
+            if (track.name === 'ELECTRO') {
+              this.play808HiHat(now, duration * 0.5, volume, 8000); // Shorter, higher hihat
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808HiHat(now, duration * 1.5, volume * 0.8, 6000); // Longer, softer hihat
+            } else if (track.name === 'PERCUSSION') {
+              this.play808HiHat(now, duration * 0.25, volume * 1.2, 10000); // Very short, bright percussion
+            } else {
+              this.play808HiHat(now, duration, volume);
+            }
             break;
           case 3: // Crash
-            this.play808Crash(now, duration, volume);
+            if (track.name === 'ELECTRO') {
+              this.play808Crash(now, duration * 0.8, volume, 7000); // Electronic crash
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808Crash(now, duration * 1.5, volume * 0.7, 5000); // Longer crash
+            } else if (track.name === 'PERCUSSION') {
+              this.play808Ride(now, duration, volume); // Use ride for percussion
+            } else {
+              this.play808Crash(now, duration, volume);
+            }
             break;
           case 4: // Tom1
-            this.play808Tom(now, duration, volume, 150);
+            if (track.name === 'ELECTRO') {
+              this.play808Tom(now, duration, volume, 180); // Higher electronic tom
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808Tom(now, duration * 1.2, volume * 0.9, 130); // More resonant tom
+            } else if (track.name === 'PERCUSSION') {
+              this.play808Tom(now, duration, volume * 1.1, 200); // High percussion
+            } else {
+              this.play808Tom(now, duration, volume, 150);
+            }
             break;
           case 5: // Tom2
-            this.play808Tom(now, duration, volume, 100);
+            if (track.name === 'ELECTRO') {
+              this.play808Tom(now, duration, volume, 120); // Mid electronic tom
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808Tom(now, duration * 1.2, volume * 0.9, 90); // More resonant tom
+            } else if (track.name === 'PERCUSSION') {
+              this.play808Tom(now, duration, volume * 1.1, 140); // Mid percussion
+            } else {
+              this.play808Tom(now, duration, volume, 100);
+            }
             break;
           case 6: // Ride
-            this.play808Ride(now, duration, volume);
+            if (track.name === 'ELECTRO') {
+              this.play808Ride(now, duration, volume, 7000); // Brighter ride
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808Ride(now, duration * 1.3, volume * 0.8, 4000); // Warmer ride
+            } else if (track.name === 'PERCUSSION') {
+              this.play808Crash(now, duration * 0.5, volume, 8000); // Use crash for percussion
+            } else {
+              this.play808Ride(now, duration, volume);
+            }
             break;
           case 7: // Clap
-            this.play808Clap(now, duration, volume);
+            if (track.name === 'ELECTRO') {
+              this.play808Clap(now, duration, volume * 1.2); // Louder clap
+            } else if (track.name === 'ACOUSTIC') {
+              this.play808Snare(now, duration, volume * 0.7); // Use snare instead for acoustic
+            } else if (track.name === 'PERCUSSION') {
+              this.play808Clap(now, duration * 0.6, volume * 1.1); // Short, sharp clap
+            } else {
+              this.play808Clap(now, duration, volume);
+            }
             break;
         }
       } else {
@@ -2603,16 +2876,60 @@ class ArtisanAlleyScene extends Phaser.Scene {
         const noteName = track.notes[noteIndex];
         const frequency = noteFrequencies[noteName] || 440;
         
-        switch(track.name) {
-          case 'BASS':
+        // Bass instruments
+        if (track.name === 'BASS' || track.name === 'SUB' || track.name === 'PLUCK') {
+          if (track.name === 'SUB') {
+            // Sub bass - lower, more sine-like
+            this.play8BitBass(now, frequency * 0.5, duration, volume, 'sine');
+          } else if (track.name === 'PLUCK') {
+            // Plucky bass - short attack, quick decay
+            this.play8BitBass(now, frequency, duration * 0.5, volume * 1.2, 'triangle');
+          } else {
+            // Standard bass
             this.play8BitBass(now, frequency, duration, volume);
-            break;
-          case 'SYNTH':
+          }
+        }
+        // Synth instruments
+        else if (track.name === 'SYNTH' || track.name === 'LEAD' || track.name === 'ARP' || track.name === 'KEYS') {
+          if (track.name === 'LEAD') {
+            // Lead synth - more sawtooth, longer sustain
+            this.play8BitSynth(now, frequency, duration * 1.2, volume, 'sawtooth');
+          } else if (track.name === 'ARP') {
+            // Arpeggiator-like - shorter notes
+            this.play8BitSynth(now, frequency, duration * 0.4, volume * 1.1, 'square');
+          } else if (track.name === 'KEYS') {
+            // Keys - more piano-like
+            this.play8BitSynth(now, frequency, duration * 0.8, volume, 'triangle');
+          } else {
+            // Standard synth
             this.play8BitSynth(now, frequency, duration, volume);
-            break;
-          case 'PAD':
-            this.play8BitPad(now, frequency, duration, volume);
-            break;
+          }
+        }
+        // Pad instruments
+        else if (track.name === 'PAD' || track.name === 'STRINGS' || track.name === 'AMBIENT' || 
+                track.name === 'CHOIR' || track.name === 'AURA' || track.name === 'SHIMMER') {
+          if (track.name === 'STRINGS') {
+            // Strings - more sawtooth, longer attack, slight vibrato
+            this.play8BitPad(now, frequency, duration * 1.5, volume, 'sawtooth', 0.03, true);
+          } else if (track.name === 'AMBIENT') {
+            // Ambient - very long release, lower volume, smooth sine waves
+            this.play8BitPad(now, frequency, duration * 3, volume * 0.6, 'sine', 0.2, true);
+          } else if (track.name === 'CHOIR') {
+            // Choir - warmer, more detuned, vocal-like formants
+            this.play8BitPad(now, frequency, duration * 2, volume * 0.75, 'sine', 0.05, true);
+          } else if (track.name === 'AURA') {
+            // Aura - ethereal atmosphere with wide stereo and very slow attack
+            this.play8BitPad(now, frequency, duration * 4, volume * 0.5, 'sine', 0.1, true);
+          } else if (track.name === 'SHIMMER') {
+            // Shimmer - bright, octave-up harmonics with sparkle
+            const shimmerFreq = frequency * 2; // Octave up
+            this.play8BitPad(now, shimmerFreq, duration * 2.5, volume * 0.65, 'triangle', 0.15, true);
+            // Add main note at lower volume
+            this.play8BitPad(now, frequency, duration * 2, volume * 0.3, 'sine', 0.05, true);
+          } else {
+            // Standard pad - balanced, warm sustain
+            this.play8BitPad(now, frequency, duration * 2, volume * 0.8, 'sine', 0.07, true);
+          }
         }
       }
     } catch (error) {
@@ -2621,12 +2938,12 @@ class ArtisanAlleyScene extends Phaser.Scene {
   }
 
   // 808-style drum sounds
-  play808Kick(now, duration, volume) {
+  play808Kick(now, duration, volume, freq = 150) {
     const osc = this.audioContext.createOscillator();
     const gain = this.audioContext.createGain();
     
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.setValueAtTime(freq, now);
     osc.frequency.exponentialRampToValueAtTime(0.01, now + duration);
     
     gain.gain.setValueAtTime(volume, now);
@@ -2639,7 +2956,7 @@ class ArtisanAlleyScene extends Phaser.Scene {
     osc.stop(now + duration);
   }
 
-  play808Snare(now, duration, volume) {
+  play808Snare(now, duration, volume, noiseMix = 0.5) {
     const noise = this.audioContext.createBufferSource();
     const noiseGain = this.audioContext.createGain();
     const osc = this.audioContext.createOscillator();
@@ -2675,7 +2992,40 @@ class ArtisanAlleyScene extends Phaser.Scene {
     osc.stop(now + duration);
   }
 
-  play808HiHat(now, duration, volume) {
+  play808HiHat(now, duration, volume, frequency = 7000) {
+    const noise = this.audioContext.createBufferSource();
+    const noiseFilter = this.audioContext.createBiquadFilter();
+    const noiseGain = this.audioContext.createGain();
+    
+    // Create noise buffer
+    const bufferSize = this.audioContext.sampleRate * duration;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    noise.buffer = buffer;
+    
+    // Set up filter
+    noiseFilter.type = 'highpass';
+    noiseFilter.frequency.value = frequency;
+    noiseFilter.Q.value = 5;
+    
+    // Set up gain
+    noiseGain.gain.setValueAtTime(volume, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    // Connect nodes
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(this.trackGains.drums);
+    
+    noise.start(now);
+  }
+
+  play808Crash(now, duration, volume, frequency = 6000) {
     const noise = this.audioContext.createBufferSource();
     const gain = this.audioContext.createGain();
     const filter = this.audioContext.createBiquadFilter();
@@ -2684,53 +3034,25 @@ class ArtisanAlleyScene extends Phaser.Scene {
     const bufferSize = this.audioContext.sampleRate * duration;
     const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
     const data = buffer.getChannelData(0);
+    
     for (let i = 0; i < bufferSize; i++) {
       data[i] = Math.random() * 2 - 1;
     }
     
     noise.buffer = buffer;
     filter.type = 'highpass';
-    filter.frequency.value = 7000;
+    filter.frequency.value = frequency;
     filter.Q.value = 1;
     
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(this.trackGains.drums);
     
-    gain.gain.setValueAtTime(volume * 0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    gain.gain.setValueAtTime(volume * 0.7, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration * 2);
     
     noise.start(now);
-    noise.stop(now + duration);
-  }
-
-  play808Crash(now, duration, volume) {
-    const noise = this.audioContext.createBufferSource();
-    const gain = this.audioContext.createGain();
-    const filter = this.audioContext.createBiquadFilter();
-    
-    // Create noise buffer
-    const bufferSize = this.audioContext.sampleRate * duration;
-    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-    
-    noise.buffer = buffer;
-    filter.type = 'bandpass';
-    filter.frequency.value = 1000;
-    filter.Q.value = 1;
-    
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.trackGains.drums);
-    
-    gain.gain.setValueAtTime(volume * 0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
-    
-    noise.start(now);
-    noise.stop(now + duration);
+    noise.stop(now + duration * 2);
   }
 
   play808Tom(now, duration, volume, frequency) {
@@ -2751,7 +3073,7 @@ class ArtisanAlleyScene extends Phaser.Scene {
     osc.stop(now + duration);
   }
 
-  play808Ride(now, duration, volume) {
+  play808Ride(now, duration, volume, freq = 2000) {
     const noise = this.audioContext.createBufferSource();
     const gain = this.audioContext.createGain();
     const filter = this.audioContext.createBiquadFilter();
@@ -2760,24 +3082,25 @@ class ArtisanAlleyScene extends Phaser.Scene {
     const bufferSize = this.audioContext.sampleRate * duration;
     const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
     const data = buffer.getChannelData(0);
+    
     for (let i = 0; i < bufferSize; i++) {
       data[i] = Math.random() * 2 - 1;
     }
     
     noise.buffer = buffer;
     filter.type = 'bandpass';
-    filter.frequency.value = 2000;
+    filter.frequency.value = freq;
     filter.Q.value = 1;
     
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(this.trackGains.drums);
     
-    gain.gain.setValueAtTime(volume * 0.25, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    gain.gain.setValueAtTime(volume * 0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration * 1.5);
     
     noise.start(now);
-    noise.stop(now + duration);
+    noise.stop(now + duration * 1.5);
   }
 
   play808Clap(now, duration, volume) {
@@ -2810,14 +3133,16 @@ class ArtisanAlleyScene extends Phaser.Scene {
   }
 
   // 8-bit style synth sounds
-  play8BitBass(now, frequency, duration, volume) {
+  play8BitBass(now, frequency, duration, volume, waveType = 'square') {
     const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
     const filter = this.audioContext.createBiquadFilter();
+    const gain = this.audioContext.createGain();
     
-    osc.type = 'square';
+    // Bass oscillator
+    osc.type = waveType;
     osc.frequency.setValueAtTime(frequency, now);
     
+    // Low pass filter for warmth
     filter.type = 'lowpass';
     filter.frequency.value = 1000;
     filter.Q.value = 1;
@@ -2833,7 +3158,7 @@ class ArtisanAlleyScene extends Phaser.Scene {
     osc.stop(now + duration);
   }
 
-  play8BitSynth(now, frequency, duration, volume) {
+  play8BitSynth(now, frequency, duration, volume, waveType = 'sawtooth') {
     const osc1 = this.audioContext.createOscillator();
     const osc2 = this.audioContext.createOscillator();
     const gain = this.audioContext.createGain();
@@ -2862,33 +3187,113 @@ class ArtisanAlleyScene extends Phaser.Scene {
     osc2.stop(now + duration);
   }
 
-  play8BitPad(now, frequency, duration, volume) {
+  play8BitPad(now, frequency, duration, volume, waveType = 'sine', detune = 0.05, useChorus = false) {
+    // Main oscillators - pads use multiple oscillators for richness
     const osc1 = this.audioContext.createOscillator();
     const osc2 = this.audioContext.createOscillator();
+    const osc3 = this.audioContext.createOscillator(); // Third oscillator for more harmonics
+    
+    // Multiple filters for a richer sound
+    const filter1 = this.audioContext.createBiquadFilter();
+    const filter2 = this.audioContext.createBiquadFilter();
+    
+    // Main gain node
     const gain = this.audioContext.createGain();
-    const filter = this.audioContext.createBiquadFilter();
     
-    osc1.type = 'sine';
-    osc2.type = 'triangle';
+    // Set oscillator types and frequencies
+    osc1.type = waveType;
     osc1.frequency.setValueAtTime(frequency, now);
-    osc2.frequency.setValueAtTime(frequency * 1.02, now); // Slight detune
     
-    filter.type = 'lowpass';
-    filter.frequency.value = 1000;
-    filter.Q.value = 1;
+    osc2.type = waveType === 'sine' ? 'triangle' : waveType; // Slight variation in waveform
+    osc2.frequency.setValueAtTime(frequency * (1 + detune), now); // Slight detune above
     
-    gain.gain.setValueAtTime(volume * 0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + duration * 3); // Longer release
+    osc3.type = waveType === 'sawtooth' ? 'sine' : 'sawtooth'; // Complementary waveform
+    osc3.frequency.setValueAtTime(frequency * (1 - detune * 0.7), now); // Slight detune below
     
-    osc1.connect(filter);
-    osc2.connect(filter);
-    filter.connect(gain);
+    // Filter setup for warmth and smoothness
+    filter1.type = 'lowpass';
+    filter1.frequency.setValueAtTime(3000, now);
+    filter1.frequency.exponentialRampToValueAtTime(1500, now + duration); // Filter sweep
+    filter1.Q.value = 2;
+    
+    filter2.type = 'lowpass';
+    filter2.frequency.setValueAtTime(2000, now);
+    filter2.Q.value = 1;
+    
+    // Very slow attack and extremely long release for pad sound
+    const attackTime = 0.3; // 300ms attack
+    const releaseTime = duration * 4; // Very long release - 4x the note duration
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(volume, now + attackTime); // Slow, smooth attack
+    gain.gain.setValueAtTime(volume, now + attackTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration + releaseTime); // Very long release
+    
+    // Connect all oscillators through filters to gain
+    osc1.connect(filter1);
+    osc2.connect(filter1);
+    osc3.connect(filter2);
+    
+    filter1.connect(gain);
+    filter2.connect(gain);
     gain.connect(this.trackGains.pad);
     
+    // Add chorus effect for richer pad sounds
+    if (useChorus || waveType === 'sine') { // Always use chorus for sine pads
+      const chorusOsc = this.audioContext.createOscillator();
+      const chorusGain = this.audioContext.createGain();
+      
+      chorusOsc.type = 'sine';
+      chorusOsc.frequency.setValueAtTime(4 + Math.random() * 2, now); // 4-6 Hz chorus rate with randomness
+      
+      chorusGain.gain.setValueAtTime(8, now); // Stronger chorus effect
+      
+      chorusOsc.connect(chorusGain);
+      chorusGain.connect(osc1.detune);
+      chorusGain.connect(osc2.detune);
+      
+      chorusOsc.start(now);
+      chorusOsc.stop(now + duration + releaseTime);
+      
+      // Add a second slower chorus for more movement
+      const chorusOsc2 = this.audioContext.createOscillator();
+      const chorusGain2 = this.audioContext.createGain();
+      
+      chorusOsc2.type = 'sine';
+      chorusOsc2.frequency.setValueAtTime(0.5 + Math.random() * 0.5, now); // Slower rate
+      
+      chorusGain2.gain.setValueAtTime(15, now); // Deeper modulation
+      
+      chorusOsc2.connect(chorusGain2);
+      chorusGain2.connect(osc3.detune);
+      
+      chorusOsc2.start(now);
+      chorusOsc2.stop(now + duration + releaseTime);
+    }
+    
+    // Add reverb simulation using delay and feedback
+    const delay = this.audioContext.createDelay();
+    const feedbackGain = this.audioContext.createGain();
+    const reverbMix = this.audioContext.createGain();
+    
+    delay.delayTime.value = 0.15;
+    feedbackGain.gain.value = 0.25;
+    reverbMix.gain.value = 0.2;
+    
+    gain.connect(delay);
+    delay.connect(feedbackGain);
+    feedbackGain.connect(delay);
+    delay.connect(reverbMix);
+    reverbMix.connect(this.trackGains.pad);
+    
+    // Start and stop all oscillators
     osc1.start(now);
     osc2.start(now);
-    osc1.stop(now + duration * 3);
-    osc2.stop(now + duration * 3);
+    osc3.start(now);
+    
+    osc1.stop(now + duration + releaseTime);
+    osc2.stop(now + duration + releaseTime);
+    osc3.stop(now + duration + releaseTime);
   }
 
   initAudio() {
@@ -2918,5 +3323,1127 @@ class ArtisanAlleyScene extends Phaser.Scene {
     } catch (error) {
       console.error('Error initializing audio:', error);
     }
+  }
+
+  // New Design Studio - Start with furniture type selection
+  openDesignStudioTypeSelection() {
+    this.currentScreen = 'design_studio';
+    
+    // Create object types with their resource requirements and base stats
+    const designObjectTypes = [
+      { name: 'Chair', resources: { wood: 2, cloth: 1 }, baseComfort: 5, baseStyle: 3 },
+      { name: 'Couch', resources: { wood: 3, cloth: 3 }, baseComfort: 8, baseStyle: 5 },
+      { name: 'Table', resources: { wood: 4, metal: 1 }, baseSturdiness: 7, baseStyle: 4 },
+      { name: 'Wall Art', resources: { cloth: 1, dye: 2 }, baseStyle: 8, basePrestige: 5 },
+      { name: 'Light Fixture', resources: { metal: 2, gems: 1 }, baseStyle: 6, baseIllumination: 7 },
+      { name: 'Door', resources: { wood: 3, metal: 1 }, baseSecurity: 6, baseStyle: 3 },
+      { name: 'Wallpaper', resources: { cloth: 2, dye: 3 }, baseStyle: 7, baseAmbience: 6 },
+      { name: 'Dresser', resources: { wood: 5, metal: 1 }, baseStorage: 8, baseStyle: 4 },
+      { name: 'Bar', resources: { wood: 6, metal: 2 }, baseSociability: 8, baseStyle: 7 },
+      { name: 'Carpet', resources: { cloth: 4, dye: 2 }, baseComfort: 6, baseStyle: 5 }
+    ];
+    
+    // Show selection dialog
+    this.showDialog('DESIGN STUDIO\n\nWhat would you like to design?');
+    
+    // Create buttons in two rows for better layout
+    const firstRow = designObjectTypes.slice(0, 5);
+    const secondRow = designObjectTypes.slice(5);
+    
+    const options = [];
+    
+    // First row options
+    firstRow.forEach((item, index) => {
+      options.push({
+        label: item.name,
+        callback: () => this.startDesignProcess(item)
+      });
+    });
+    
+    // Add spacing between rows
+    options.push({ label: ' ', callback: () => {} });
+    
+    // Second row options
+    secondRow.forEach((item, index) => {
+      options.push({
+        label: item.name,
+        callback: () => this.startDesignProcess(item)
+      });
+    });
+    
+    // Add back button
+    options.push({ label: 'Cancel', callback: () => this.closeCurrentScreen() });
+    
+    this.createButtons(options);
+  }
+  
+  // Start the design process for the selected object type
+  startDesignProcess(objectType) {
+    // Store the selected object type
+    this.currentDesignObject = objectType;
+    
+    // Check if player has required resources
+    const hasResources = this.checkDesignResources(objectType.resources);
+    
+    if (!hasResources) {
+      // Show missing resources dialog
+      this.showMissingResourcesDialog(objectType);
+      return;
+    }
+    
+    // Continue to design interface
+    this.showDesignStudio(objectType);
+  }
+  
+  // Check if player has required resources
+  checkDesignResources(requiredResources) {
+    for (const [resource, amount] of Object.entries(requiredResources)) {
+      // Find the resource in player inventory
+      const inventoryItem = this.localInventory.find(item => 
+        item.name.toLowerCase() === resource.toLowerCase() || 
+        item.name.toLowerCase() === resource.toLowerCase() + 's'
+      );
+      
+      // Check if player has enough
+      if (!inventoryItem || inventoryItem.quantity < amount) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  // Show dialog for missing resources
+  showMissingResourcesDialog(objectType) {
+    let resourceText = 'You need:\n';
+    
+    for (const [resource, amount] of Object.entries(objectType.resources)) {
+      // Find current amount in inventory
+      const inventoryItem = this.localInventory.find(item => 
+        item.name.toLowerCase() === resource.toLowerCase() || 
+        item.name.toLowerCase() === resource.toLowerCase() + 's'
+      );
+      const currentAmount = inventoryItem ? inventoryItem.quantity : 0;
+      
+      resourceText += `${resource}: ${currentAmount}/${amount}\n`;
+    }
+    
+    this.showDialog(`Insufficient resources to craft ${objectType.name}.\n\n${resourceText}`);
+    
+    this.createButtons([
+      { label: 'Buy Materials', callback: () => this.showMaterialsShop({ name: 'design_studio' }) },
+      { label: 'Choose Different Item', callback: () => this.openDesignStudioTypeSelection() },
+      { label: 'Exit', callback: () => this.closeCurrentScreen() }
+    ]);
+  }
+  
+  // Show the main design studio interface
+  showDesignStudio(objectType) {
+    this.currentScreen = 'design_studio_editor';
+    
+    // Create a larger dialog for the design editor
+    const boxW = 450, boxH = 350;
+    const boxX = (this.game.config.width - boxW) / 2;
+    const boxY = (this.game.config.height - boxH) / 2;
+    
+    // Clear previous dialog and buttons
+    this.dialogBg.clear();
+    this.dialogBg.fillStyle(0x000000, 0.8);
+    this.dialogBg.fillRect(boxX, boxY, boxW, boxH);
+    this.dialogBg.setVisible(true);
+    this.clearButtons();
+    
+    // Add title
+    const title = this.add.text(boxX + boxW/2, boxY + 15, `DESIGN STUDIO: ${objectType.name.toUpperCase()}`, 
+      { font: '16px Arial', fill: '#ffffff', align: 'center' }
+    ).setOrigin(0.5).setDepth(1601).setScrollFactor(0);
+    this.buttons.push(title);
+    
+    // Initialize design properties
+    this.designProperties = {
+      material: 'wood',
+      color: 'brown',
+      style: 'modern',
+      pattern: 'none',
+      powerup: 'none',
+      powerupLevel: 1,
+      stats: {
+        comfort: objectType.baseComfort || 0,
+        style: objectType.baseStyle || 0,
+        sturdiness: objectType.baseSturdiness || 0,
+        prestige: objectType.basePrestige || 0,
+        illumination: objectType.baseIllumination || 0,
+        security: objectType.baseSecurity || 0,
+        ambience: objectType.baseAmbience || 0,
+        storage: objectType.baseStorage || 0,
+        sociability: objectType.baseSociability || 0
+      }
+    };
+    
+    // Define available options
+    const availableMaterials = ['wood', 'metal', 'glass', 'stone', 'fabric', 'leather'];
+    const availableColors = ['brown', 'black', 'white', 'red', 'blue', 'green', 'yellow', 'purple'];
+    const availableStyles = ['modern', 'rustic', 'minimalist', 'elegant', 'industrial', 'vintage'];
+    const availablePatterns = ['none', 'striped', 'checkered', 'floral', 'geometric'];
+    const availablePowerups = [
+      { name: 'none', description: 'No powerup' },
+      { name: 'comfort', description: 'Increases comfort for users (+2 Joy)' },
+      { name: 'inspiration', description: 'Boosts creativity for users (+1 Creativity)' },
+      { name: 'focus', description: 'Improves concentration (+1 Productivity)' },
+      { name: 'social', description: 'Enhances social interactions (+1 Charisma)' },
+      { name: 'prestige', description: 'Increases establishment prestige (+2 Reputation)' }
+    ];
+    
+    // Create preview area for the design
+    const previewX = boxX + 30;
+    const previewY = boxY + 50;
+    const previewWidth = 180;
+    const previewHeight = 180;
+    
+    // Preview background
+    const previewBg = this.add.rectangle(previewX, previewY, previewWidth, previewHeight, 0x333333)
+      .setOrigin(0, 0).setDepth(1602).setScrollFactor(0);
+    this.buttons.push(previewBg);
+    
+    // Create placeholder furniture preview based on object type
+    this.createFurniturePreview(objectType, previewX, previewY, previewWidth, previewHeight);
+    
+    // Create customization panels
+    const panelX = previewX + previewWidth + 20;
+    const panelY = previewY;
+    const panelWidth = 190;
+    
+    // Materials panel
+    this.createSelectionPanel('Material', availableMaterials, panelX, panelY, 
+      (material) => this.updateDesignProperty('material', material));
+    
+    // Colors panel
+    this.createSelectionPanel('Color', availableColors, panelX, panelY + 60, 
+      (color) => this.updateDesignProperty('color', color));
+    
+    // Style panel
+    this.createSelectionPanel('Style', availableStyles, panelX, panelY + 120, 
+      (style) => this.updateDesignProperty('style', style));
+    
+    // Pattern panel
+    this.createSelectionPanel('Pattern', availablePatterns, panelX, panelY + 180, 
+      (pattern) => this.updateDesignProperty('pattern', pattern));
+    
+    // Stats display
+    this.createStatsDisplay(boxX + 30, boxY + 240, 180, 90);
+    
+    // Powerup selection
+    this.createPowerupSelection(boxX + 230, boxY + 240, 190, 90, availablePowerups);
+    
+    // Action buttons
+    const buttonY = boxY + boxH - 30;
+    
+    // Create button
+    const createBtn = this.add.text(boxX + boxW - 180, buttonY, 'Create Furniture', 
+      { font: '14px Arial', fill: '#99ff99' }
+    ).setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    createBtn.on('pointerdown', () => {
+      this.createFurnitureItem(objectType);
+    });
+    
+    // Cancel button
+    const cancelBtn = this.add.text(boxX + boxW - 50, buttonY, 'Cancel', 
+      { font: '14px Arial', fill: '#ff9999' }
+    ).setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    cancelBtn.on('pointerdown', () => {
+      this.openDesignStudioTypeSelection();
+    });
+    
+    this.buttons.push(createBtn, cancelBtn);
+  }
+  
+  // Create a selection panel with options
+  createSelectionPanel(title, options, x, y, callback) {
+    // Panel title
+    const panelTitle = this.add.text(x, y, title, 
+      { font: '14px Arial', fill: '#ffffff', fontStyle: 'bold' }
+    ).setDepth(1602).setScrollFactor(0);
+    
+    this.buttons.push(panelTitle);
+    
+    // Create option buttons
+    options.forEach((option, index) => {
+      const isEven = index % 2 === 0;
+      const row = Math.floor(index / 2);
+      
+      const btnX = x + (isEven ? 0 : 100);
+      const btnY = y + 25 + row * 25;
+      
+      const optionBtn = this.add.text(btnX, btnY, option, 
+        { font: '12px Arial', fill: '#cccccc' }
+      ).setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      
+      // Handle selection
+      optionBtn.on('pointerdown', () => {
+        // Update all options to unselected style
+        this.buttons.forEach(btn => {
+          if (btn.text && options.includes(btn.text) && btn.y >= y && btn.y < y + 60) {
+            btn.setFill('#cccccc');
+          }
+        });
+        
+        // Set this option as selected
+        optionBtn.setFill('#ffff00');
+        
+        // Call the callback with selected option
+        callback(option);
+      });
+      
+      // Set initial selection for first option
+      if (index === 0) {
+        optionBtn.setFill('#ffff00');
+      }
+      
+      this.buttons.push(optionBtn);
+    });
+  }
+  
+  // Create a display area for stats
+  createStatsDisplay(x, y, width, height) {
+    // Background
+    const statsBg = this.add.rectangle(x, y, width, height, 0x222222)
+      .setOrigin(0, 0).setDepth(1602).setScrollFactor(0);
+    
+    // Title
+    const statsTitle = this.add.text(x + width/2, y + 10, 'STATS', 
+      { font: '14px Arial', fill: '#ffffff', fontStyle: 'bold' }
+    ).setOrigin(0.5, 0).setDepth(1603).setScrollFactor(0);
+    
+    this.buttons.push(statsBg, statsTitle);
+    
+    // Create stat display (only show relevant stats for this object type)
+    const relevantStats = Object.entries(this.designProperties.stats)
+      .filter(([_, value]) => value > 0)
+      .slice(0, 4); // Show at most 4 stats
+    
+    relevantStats.forEach(([stat, value], index) => {
+      const statY = y + 35 + index * 15;
+      
+      // Stat name
+      const statName = this.add.text(x + 10, statY, stat.charAt(0).toUpperCase() + stat.slice(1), 
+        { font: '12px Arial', fill: '#cccccc' }
+      ).setDepth(1603).setScrollFactor(0);
+      
+      // Stat value with dynamic color based on value
+      const valueColor = value >= 7 ? '#99ff99' : (value >= 4 ? '#ffff99' : '#ff9999');
+      const statValue = this.add.text(x + width - 30, statY, value.toString(), 
+        { font: '12px Arial', fill: valueColor, align: 'right' }
+      ).setDepth(1603).setScrollFactor(0);
+      
+      this.buttons.push(statName, statValue);
+      
+      // Store reference to update later
+      this.designProperties.statDisplays = this.designProperties.statDisplays || {};
+      this.designProperties.statDisplays[stat] = statValue;
+    });
+  }
+  
+  // Create powerup selection area
+  createPowerupSelection(x, y, width, height, powerups) {
+    // Background
+    const powerupBg = this.add.rectangle(x, y, width, height, 0x222222)
+      .setOrigin(0, 0).setDepth(1602).setScrollFactor(0);
+    
+    // Title
+    const powerupTitle = this.add.text(x + width/2, y + 10, 'POWERUP', 
+      { font: '14px Arial', fill: '#ffffff', fontStyle: 'bold' }
+    ).setOrigin(0.5, 0).setDepth(1603).setScrollFactor(0);
+    
+    this.buttons.push(powerupBg, powerupTitle);
+    
+    // Create dropdown for powerup selection
+    const dropdownBg = this.add.rectangle(x + 10, y + 35, width - 20, 20, 0x333333)
+      .setOrigin(0, 0).setDepth(1603).setScrollFactor(0)
+      .setInteractive({ useHandCursor: true });
+    
+    // Dropdown text
+    const dropdownText = this.add.text(x + 15, y + 37, 'Select Powerup', 
+      { font: '12px Arial', fill: '#ffffff' }
+    ).setDepth(1604).setScrollFactor(0);
+    
+    // Dropdown arrow
+    const dropdownArrow = this.add.text(x + width - 25, y + 37, '▼', 
+      { font: '12px Arial', fill: '#ffffff' }
+    ).setDepth(1604).setScrollFactor(0);
+    
+    this.buttons.push(dropdownBg, dropdownText, dropdownArrow);
+    
+    // Create description text area
+    const descriptionText = this.add.text(x + 10, y + 65, 'Select a powerup to enhance your furniture', 
+      { font: '11px Arial', fill: '#cccccc', wordWrap: { width: width - 20 } }
+    ).setDepth(1603).setScrollFactor(0);
+    
+    this.buttons.push(descriptionText);
+    
+    // Handle dropdown click
+    let isDropdownOpen = false;
+    let dropdownMenu = null;
+    
+    const toggleDropdown = () => {
+      isDropdownOpen = !isDropdownOpen;
+      
+      if (isDropdownOpen) {
+        // Create dropdown menu
+        dropdownMenu = this.add.container(x + 10, y + 55).setDepth(1605).setScrollFactor(0);
+        
+        // Background
+        const menuBg = this.add.rectangle(0, 0, width - 20, powerups.length * 20, 0x444444)
+          .setOrigin(0, 0);
+        
+        dropdownMenu.add(menuBg);
+        
+        // Add options
+        powerups.forEach((powerup, index) => {
+          const optionBg = this.add.rectangle(0, index * 20, width - 20, 20, 0x444444)
+            .setOrigin(0, 0)
+            .setInteractive({ useHandCursor: true });
+          
+          const optionText = this.add.text(5, index * 20 + 2, powerup.name, 
+            { font: '12px Arial', fill: '#ffffff' }
+          );
+          
+          // Handle option selection
+          optionBg.on('pointerdown', () => {
+            // Update dropdown text
+            dropdownText.setText(powerup.name);
+            
+            // Update description
+            descriptionText.setText(powerup.description);
+            
+            // Update design property
+            this.updateDesignProperty('powerup', powerup.name);
+            
+            // Close dropdown
+            toggleDropdown();
+          });
+          
+          // Hover effect
+          optionBg.on('pointerover', () => {
+            optionBg.setFillStyle(0x666666);
+          });
+          
+          optionBg.on('pointerout', () => {
+            optionBg.setFillStyle(0x444444);
+          });
+          
+          dropdownMenu.add(optionBg);
+          dropdownMenu.add(optionText);
+        });
+        
+        this.buttons.push(dropdownMenu);
+      } else if (dropdownMenu) {
+        // Remove dropdown menu
+        dropdownMenu.destroy();
+        dropdownMenu = null;
+      }
+    };
+    
+    // Handle dropdown click
+    dropdownBg.on('pointerdown', toggleDropdown);
+    dropdownArrow.on('pointerdown', toggleDropdown);
+    
+    // Add powerup level slider if not "none"
+    const levelLabel = this.add.text(x + 15, y + height - 25, 'Level:', 
+      { font: '12px Arial', fill: '#ffffff' }
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Level indicator
+    const levelValue = this.add.text(x + 60, y + height - 25, '1', 
+      { font: '12px Arial', fill: '#ffff99' }
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Level buttons
+    const decreaseBtn = this.add.text(x + 75, y + height - 25, '-', 
+      { font: '14px Arial', fill: '#ff9999' }
+    ).setDepth(1603).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    const increaseBtn = this.add.text(x + 90, y + height - 25, '+', 
+      { font: '14px Arial', fill: '#99ff99' }
+    ).setDepth(1603).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    this.buttons.push(levelLabel, levelValue, decreaseBtn, increaseBtn);
+    
+    // Handle level buttons
+    decreaseBtn.on('pointerdown', () => {
+      if (this.designProperties.powerupLevel > 1) {
+        this.designProperties.powerupLevel--;
+        levelValue.setText(this.designProperties.powerupLevel.toString());
+      }
+    });
+    
+    increaseBtn.on('pointerdown', () => {
+      if (this.designProperties.powerupLevel < 3) {
+        this.designProperties.powerupLevel++;
+        levelValue.setText(this.designProperties.powerupLevel.toString());
+      }
+    });
+  }
+  
+  // Create furniture preview based on object type
+  createFurniturePreview(objectType, x, y, width, height) {
+    // Store reference to preview objects to update later
+    this.previewObjects = [];
+    
+    // Create a placeholder preview based on object type
+    switch(objectType.name.toLowerCase()) {
+      case 'chair':
+        this.createChairPreview(x, y, width, height);
+        break;
+      case 'couch':
+        this.createCouchPreview(x, y, width, height);
+        break;
+      case 'table':
+        this.createTablePreview(x, y, width, height);
+        break;
+      case 'wall art':
+        this.createWallArtPreview(x, y, width, height);
+        break;
+      case 'light fixture':
+        this.createLightFixturePreview(x, y, width, height);
+        break;
+      case 'door':
+        this.createDoorPreview(x, y, width, height);
+        break;
+      case 'wallpaper':
+        this.createWallpaperPreview(x, y, width, height);
+        break;
+      case 'dresser':
+        this.createDresserPreview(x, y, width, height);
+        break;
+      case 'bar':
+        this.createBarPreview(x, y, width, height);
+        break;
+      case 'carpet':
+        this.createCarpetPreview(x, y, width, height);
+        break;
+      default:
+        // Generic box as placeholder
+        const placeholder = this.add.rectangle(
+          x + width/2, 
+          y + height/2, 
+          width * 0.6, 
+          height * 0.6, 
+          0x8B4513
+        ).setDepth(1603).setScrollFactor(0);
+        
+        this.previewObjects.push(placeholder);
+        this.buttons.push(placeholder);
+        break;
+    }
+  }
+  
+  // Update a design property and refresh the preview
+  updateDesignProperty(property, value) {
+    this.designProperties[property] = value;
+    this.updateFurniturePreview();
+    this.updateStatsForDesign();
+  }
+  
+  // Update furniture preview based on current properties
+  updateFurniturePreview() {
+    // Color mapping
+    const colorMap = {
+      'brown': 0x8B4513,
+      'black': 0x000000,
+      'white': 0xFFFFFF,
+      'red': 0xFF0000,
+      'blue': 0x0000FF,
+      'green': 0x00FF00,
+      'yellow': 0xFFFF00,
+      'purple': 0x800080
+    };
+    
+    // Get color based on material and selected color
+    let baseColor = colorMap[this.designProperties.color] || 0x8B4513;
+    
+    // Adjust color based on material
+    if (this.designProperties.material === 'metal') {
+      // Make metal colors more shiny/desaturated
+      baseColor = this.adjustColorForMetal(baseColor);
+    } else if (this.designProperties.material === 'glass') {
+      // Make glass colors more transparent
+      baseColor = this.adjustColorForGlass(baseColor);
+    } else if (this.designProperties.material === 'stone') {
+      // Make stone colors more grayish
+      baseColor = this.adjustColorForStone(baseColor);
+    }
+    
+    // Update all preview objects with new color
+    this.previewObjects.forEach(obj => {
+      if (obj.setFillStyle) {
+        obj.setFillStyle(baseColor);
+      }
+      
+      // Apply pattern if not "none"
+      if (this.designProperties.pattern !== 'none') {
+        // Pattern effects would be implemented here
+      }
+    });
+  }
+  
+  // Color adjustment helpers
+  adjustColorForMetal(color) {
+    // Make color more desaturated and lighter for metal
+    return this.adjustColor(color, 0.3, 1.2);
+  }
+  
+  adjustColorForGlass(color) {
+    // Make color lighter and more translucent for glass
+    return this.adjustColor(color, 0.5, 1.5);
+  }
+  
+  adjustColorForStone(color) {
+    // Make color more grayish for stone
+    return this.adjustColor(color, 0.2, 0.8);
+  }
+  
+  adjustColor(color, saturationFactor, brightnessFactor) {
+    // Extract RGB components
+    const r = ((color >> 16) & 0xFF) / 255;
+    const g = ((color >> 8) & 0xFF) / 255;
+    const b = (color & 0xFF) / 255;
+    
+    // Calculate HSL
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    
+    if (max === min) {
+      h = s = 0; // achromatic
+    } else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      
+      h /= 6;
+    }
+    
+    // Adjust saturation and brightness
+    s = Math.min(1, Math.max(0, s * saturationFactor));
+    l = Math.min(1, Math.max(0, l * brightnessFactor));
+    
+    // Convert back to RGB
+    let r1, g1, b1;
+    
+    if (s === 0) {
+      r1 = g1 = b1 = l; // achromatic
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      
+      r1 = hue2rgb(p, q, h + 1/3);
+      g1 = hue2rgb(p, q, h);
+      b1 = hue2rgb(p, q, h - 1/3);
+    }
+    
+    // Convert back to hex
+    return (Math.round(r1 * 255) << 16) | (Math.round(g1 * 255) << 8) | Math.round(b1 * 255);
+  }
+  
+  // Update stats based on selected design properties
+  updateStatsForDesign() {
+    // Base stat modifiers by material
+    const materialModifiers = {
+      'wood': { sturdiness: 1, style: 1 },
+      'metal': { sturdiness: 3, style: -1 },
+      'glass': { style: 2, sturdiness: -1 },
+      'stone': { sturdiness: 2, style: 0 },
+      'fabric': { comfort: 2, style: 1 },
+      'leather': { comfort: 3, style: 2 }
+    };
+    
+    // Style modifiers
+    const styleModifiers = {
+      'modern': { style: 2 },
+      'rustic': { comfort: 1, style: 1 },
+      'minimalist': { style: 1 },
+      'elegant': { style: 3, prestige: 2 },
+      'industrial': { sturdiness: 2, style: -1 },
+      'vintage': { style: 2, prestige: 1 }
+    };
+    
+    // Pattern modifiers
+    const patternModifiers = {
+      'none': {},
+      'striped': { style: 1 },
+      'checkered': { style: 1 },
+      'floral': { style: 2 },
+      'geometric': { style: 1, prestige: 1 }
+    };
+    
+    // Get original base stats
+    const baseStats = { ...this.currentDesignObject };
+    
+    // Apply modifiers
+    const materialMods = materialModifiers[this.designProperties.material] || {};
+    const styleMods = styleModifiers[this.designProperties.style] || {};
+    const patternMods = patternModifiers[this.designProperties.pattern] || {};
+    
+    // Reset stats to base values from object type
+    for (const stat in this.designProperties.stats) {
+      this.designProperties.stats[stat] = baseStats[`base${stat.charAt(0).toUpperCase() + stat.slice(1)}`] || 0;
+    }
+    
+    // Apply material modifiers
+    for (const stat in materialMods) {
+      if (this.designProperties.stats[stat] !== undefined) {
+        this.designProperties.stats[stat] += materialMods[stat];
+      }
+    }
+    
+    // Apply style modifiers
+    for (const stat in styleMods) {
+      if (this.designProperties.stats[stat] !== undefined) {
+        this.designProperties.stats[stat] += styleMods[stat];
+      }
+    }
+    
+    // Apply pattern modifiers
+    for (const stat in patternMods) {
+      if (this.designProperties.stats[stat] !== undefined) {
+        this.designProperties.stats[stat] += patternMods[stat];
+      }
+    }
+    
+    // Apply powerup effects
+    if (this.designProperties.powerup !== 'none') {
+      const powerupStat = this.designProperties.powerup;
+      const powerupLevel = this.designProperties.powerupLevel;
+      
+      if (this.designProperties.stats[powerupStat] !== undefined) {
+        this.designProperties.stats[powerupStat] += powerupLevel * 2;
+      }
+    }
+    
+    // Ensure stats are within reasonable bounds
+    for (const stat in this.designProperties.stats) {
+      this.designProperties.stats[stat] = Math.max(0, Math.min(10, this.designProperties.stats[stat]));
+    }
+    
+    // Update the UI if stat displays exist
+    if (this.designProperties.statDisplays) {
+      for (const stat in this.designProperties.statDisplays) {
+        const value = this.designProperties.stats[stat];
+        const display = this.designProperties.statDisplays[stat];
+        
+        if (display) {
+          // Update text
+          display.setText(value.toString());
+          
+          // Update color based on value
+          const valueColor = value >= 7 ? '#99ff99' : (value >= 4 ? '#ffff99' : '#ff9999');
+          display.setFill(valueColor);
+        }
+      }
+    }
+  }
+  
+  // Create furniture item and add to inventory
+  createFurnitureItem(objectType) {
+    // Consume required resources
+    for (const [resource, amount] of Object.entries(objectType.resources)) {
+      this.removeFromInventory(resource, amount);
+    }
+    
+    // Generate item name
+    const itemName = this.generateFurnitureItemName(objectType);
+    
+    // Determine powerup effect description
+    let powerupEffect = '';
+    if (this.designProperties.powerup !== 'none') {
+      const effectValue = this.designProperties.powerupLevel * 2;
+      const statName = this.designProperties.powerup.charAt(0).toUpperCase() + this.designProperties.powerup.slice(1);
+      powerupEffect = ` (${statName} +${effectValue})`;
+    }
+    
+    // Add to inventory with stats
+    this.addToInventory(itemName + powerupEffect, 1);
+    
+    // Show completion message
+    this.showDialog(`You created "${itemName}"!\n\nYour design has been added to your inventory.${powerupEffect ? '\n\nPowerup: ' + powerupEffect : ''}`);
+    this.createButtons([
+      { label: 'Create Another', callback: () => this.openDesignStudioTypeSelection() },
+      { label: 'Exit', callback: () => this.closeCurrentScreen() }
+    ]);
+  }
+  
+  // Generate a descriptive name for the created furniture
+  generateFurnitureItemName(objectType) {
+    const material = this.designProperties.material.charAt(0).toUpperCase() + this.designProperties.material.slice(1);
+    const style = this.designProperties.style.charAt(0).toUpperCase() + this.designProperties.style.slice(1);
+    const color = this.designProperties.color.charAt(0).toUpperCase() + this.designProperties.color.slice(1);
+    
+    // Generate name with pattern if not "none"
+    let patternPart = '';
+    if (this.designProperties.pattern !== 'none') {
+      patternPart = ' ' + this.designProperties.pattern.charAt(0).toUpperCase() + this.designProperties.pattern.slice(1);
+    }
+    
+    return `${color}${patternPart} ${style} ${material} ${objectType.name}`;
+  }
+  
+  // Create a chair preview
+  createChairPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Chair back
+    const chairBack = this.add.rectangle(
+      centerX,
+      centerY - height * 0.15,
+      width * 0.3,
+      height * 0.4,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Chair seat
+    const chairSeat = this.add.rectangle(
+      centerX,
+      centerY + height * 0.05,
+      width * 0.3,
+      height * 0.1,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Chair legs
+    const legWidth = width * 0.05;
+    const legHeight = height * 0.2;
+    
+    const frontLeftLeg = this.add.rectangle(
+      centerX - width * 0.12,
+      centerY + height * 0.2,
+      legWidth,
+      legHeight,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    const frontRightLeg = this.add.rectangle(
+      centerX + width * 0.12,
+      centerY + height * 0.2,
+      legWidth,
+      legHeight,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    this.previewObjects.push(chairBack, chairSeat, frontLeftLeg, frontRightLeg);
+    this.buttons.push(chairBack, chairSeat, frontLeftLeg, frontRightLeg);
+  }
+  
+  // Create a couch preview
+  createCouchPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Couch back
+    const couchBack = this.add.rectangle(
+      centerX,
+      centerY - height * 0.1,
+      width * 0.6,
+      height * 0.3,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Couch seat
+    const couchSeat = this.add.rectangle(
+      centerX,
+      centerY + height * 0.1,
+      width * 0.6,
+      height * 0.2,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Couch arms
+    const leftArm = this.add.rectangle(
+      centerX - width * 0.35,
+      centerY,
+      width * 0.1,
+      height * 0.4,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    const rightArm = this.add.rectangle(
+      centerX + width * 0.35,
+      centerY,
+      width * 0.1,
+      height * 0.4,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    this.previewObjects.push(couchBack, couchSeat, leftArm, rightArm);
+    this.buttons.push(couchBack, couchSeat, leftArm, rightArm);
+  }
+  
+  // Create a table preview
+  createTablePreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Table top
+    const tableTop = this.add.rectangle(
+      centerX,
+      centerY - height * 0.1,
+      width * 0.6,
+      height * 0.1,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Table legs
+    const legWidth = width * 0.05;
+    const legHeight = height * 0.3;
+    
+    const frontLeftLeg = this.add.rectangle(
+      centerX - width * 0.25,
+      centerY + height * 0.05,
+      legWidth,
+      legHeight,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    const frontRightLeg = this.add.rectangle(
+      centerX + width * 0.25,
+      centerY + height * 0.05,
+      legWidth,
+      legHeight,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    this.previewObjects.push(tableTop, frontLeftLeg, frontRightLeg);
+    this.buttons.push(tableTop, frontLeftLeg, frontRightLeg);
+  }
+  
+  // Create a wall art preview
+  createWallArtPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Frame
+    const frame = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.6,
+      height * 0.4,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Canvas/picture inside frame
+    const canvas = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.5,
+      height * 0.3,
+      0xFFFFFF
+    ).setDepth(1604).setScrollFactor(0);
+    
+    this.previewObjects.push(frame, canvas);
+    this.buttons.push(frame, canvas);
+  }
+  
+  // Create a light fixture preview
+  createLightFixturePreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Hanging cord
+    const cord = this.add.rectangle(
+      centerX,
+      centerY - height * 0.15,
+      width * 0.02,
+      height * 0.3,
+      0x000000
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Fixture base
+    const fixtureBase = this.add.rectangle(
+      centerX,
+      centerY + height * 0.05,
+      width * 0.3,
+      height * 0.1,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Light bulb/shade
+    const lightShade = this.add.rectangle(
+      centerX,
+      centerY + height * 0.05,
+      width * 0.25,
+      height * 0.25,
+      0xFFFF99
+    ).setDepth(1604).setScrollFactor(0).setAlpha(0.8);
+    
+    this.previewObjects.push(cord, fixtureBase, lightShade);
+    this.buttons.push(cord, fixtureBase, lightShade);
+  }
+  
+  // Create a door preview
+  createDoorPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Door frame
+    const doorFrame = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.4,
+      height * 0.7,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Door handle
+    const doorHandle = this.add.circle(
+      centerX + width * 0.15,
+      centerY,
+      width * 0.03,
+      0xC0C0C0
+    ).setDepth(1604).setScrollFactor(0);
+    
+    this.previewObjects.push(doorFrame, doorHandle);
+    this.buttons.push(doorFrame, doorHandle);
+  }
+  
+  // Create a wallpaper preview
+  createWallpaperPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Wallpaper background
+    const wallpaper = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.7,
+      height * 0.7,
+      0xFFFFFF
+    ).setDepth(1603).setScrollFactor(0);
+    
+    this.previewObjects.push(wallpaper);
+    this.buttons.push(wallpaper);
+  }
+  
+  // Create a dresser preview
+  createDresserPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Dresser body
+    const dresserBody = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.5,
+      height * 0.4,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Dresser drawers
+    const drawerHeight = height * 0.1;
+    const drawers = [];
+    
+    for (let i = 0; i < 3; i++) {
+      const drawer = this.add.rectangle(
+        centerX,
+        centerY - height * 0.15 + i * drawerHeight,
+        width * 0.45,
+        drawerHeight - 4,
+        0x734A12
+      ).setDepth(1604).setScrollFactor(0);
+      
+      // Drawer handle
+      const handle = this.add.rectangle(
+        centerX,
+        centerY - height * 0.15 + i * drawerHeight,
+        width * 0.1,
+        height * 0.02,
+        0xC0C0C0
+      ).setDepth(1605).setScrollFactor(0);
+      
+      drawers.push(drawer, handle);
+      this.buttons.push(drawer, handle);
+    }
+    
+    this.previewObjects.push(dresserBody, ...drawers);
+    this.buttons.push(dresserBody);
+  }
+  
+  // Create a bar preview
+  createBarPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Bar counter
+    const barCounter = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.6,
+      height * 0.1,
+      0x8B4513
+    ).setDepth(1604).setScrollFactor(0);
+    
+    // Bar front panel
+    const barFront = this.add.rectangle(
+      centerX,
+      centerY + height * 0.15,
+      width * 0.6,
+      height * 0.2,
+      0x734A12
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Bar shelf behind
+    const barShelf = this.add.rectangle(
+      centerX,
+      centerY - height * 0.2,
+      width * 0.5,
+      height * 0.3,
+      0x8B4513
+    ).setDepth(1602).setScrollFactor(0);
+    
+    this.previewObjects.push(barCounter, barFront, barShelf);
+    this.buttons.push(barCounter, barFront, barShelf);
+  }
+  
+  // Create a carpet preview
+  createCarpetPreview(x, y, width, height) {
+    const centerX = x + width/2;
+    const centerY = y + height/2;
+    
+    // Carpet base
+    const carpet = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.7,
+      height * 0.4,
+      0x8B4513
+    ).setDepth(1603).setScrollFactor(0);
+    
+    // Carpet border
+    const carpetBorder = this.add.rectangle(
+      centerX,
+      centerY,
+      width * 0.7,
+      height * 0.4,
+      0x734A12,
+      0
+    ).setStrokeStyle(4, 0x734A12).setDepth(1604).setScrollFactor(0);
+    
+    this.previewObjects.push(carpet, carpetBorder);
+    this.buttons.push(carpet, carpetBorder);
   }
 } 
