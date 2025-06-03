@@ -73,6 +73,9 @@ class ArtisanAlleyScene extends Phaser.Scene {
     const bgWidth = this.background.displayWidth;
     const bgHeight = this.background.displayHeight;
     
+    // Initialize audio context
+    this.initAudio();
+    
     this.physics.world.setBounds(0, 0, bgWidth, bgHeight);
     this.cameras.main.setBounds(0, 0, bgWidth, bgHeight);
  
@@ -2107,581 +2110,813 @@ class ArtisanAlleyScene extends Phaser.Scene {
   }
   
   createMusicTrack(genre) {
-    // Initialize the music studio DAW
-    this.currentScreen = 'music_editor';
+    // Initialize the polyphonic DAW
+    this.currentScreen = 'music_daw';
     
-    // Create a larger dialog for the music studio
-    const boxW = 500, boxH = 400;
+    // Create a properly sized dialog for the polyphonic DAW that fits in viewport
+    const boxW = 480, boxH = 360; // Reduced from 600x450
     const boxX = (this.game.config.width - boxW) / 2;
     const boxY = (this.game.config.height - boxH) / 2;
     
     // Clear previous dialog
     this.dialogBg.clear();
-    this.dialogBg.fillStyle(0x000000, 0.8);
+    this.dialogBg.fillStyle(0x000000, 0.9);
     this.dialogBg.fillRect(boxX, boxY, boxW, boxH);
     this.dialogBg.setVisible(true);
     
     // Add title
-    const title = this.add.text(boxX + boxW/2, boxY + 15, `8-BIT ${genre.toUpperCase()} MUSIC STUDIO`, 
-      { font: '16px Arial', fill: '#ffffff', align: 'center' }
+    const title = this.add.text(boxX + boxW/2, boxY + 10, '🎵 POLYPHONIC DAW', 
+      { font: '14px Arial', fill: '#ffffff', align: 'center' }
     ).setOrigin(0.5).setDepth(1601).setScrollFactor(0);
     this.buttons.push(title);
     
-    // Define musical notes and their frequencies (C4 to B4)
-    const noteFrequencies = {
-      'C': 261.63,
-      'C#': 277.18,
-      'D': 293.66,
-      'D#': 311.13,
-      'E': 329.63,
-      'F': 349.23,
-      'F#': 369.99,
-      'G': 392.00,
-      'G#': 415.30,
-      'A': 440.00,
-      'A#': 466.16,
-      'B': 493.88
-    };
+    // Define the 4 tracks with their properties
+    const tracks = [
+      { 
+        name: 'BASS', 
+        color: 0xFF0000, 
+        notes: ['C2', 'D2', 'E2', 'F2', 'G2', 'A2', 'B2', 'C3'],
+        waveform: 'square',
+        volume: 0.8
+      },
+      { 
+        name: 'SYNTH', 
+        color: 0x00FF00, 
+        notes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'],
+        waveform: 'sawtooth',
+        volume: 0.6
+      },
+      { 
+        name: 'DRUMS', 
+        color: 0xFFFF00, 
+        notes: ['Kick', 'Snare', 'HiHat', 'Crash', 'Tom1', 'Tom2', 'Ride', 'Clap'],
+        waveform: 'square',
+        volume: 1.0
+      },
+      { 
+        name: 'PAD', 
+        color: 0x00FFFF, 
+        notes: ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3', 'C4'],
+        waveform: 'sine',
+        volume: 0.4
+      }
+    ];
     
-    // Create the sequencer grid
-    const gridStartX = boxX + 50;
-    const gridStartY = boxY + 60;
-    const cellWidth = 25;
-    const cellHeight = 20;
-    const gridCols = 32; // 32 bars
-    const gridRows = 12; // 12 notes
+    // Track tab system
+    let activeTrack = 0;
+    const tabHeight = 25; // Reduced from 30
+    const tabWidth = boxW / 4;
     
-    // Store grid cells for interaction
-    const gridCells = [];
-    
-    // Create note labels
-    const noteLabels = Object.keys(noteFrequencies).reverse();
-    noteLabels.forEach((note, rowIndex) => {
-      const label = this.add.text(gridStartX - 30, gridStartY + rowIndex * cellHeight, note, 
-        { font: '12px Arial', fill: '#ffffff' }
-      ).setDepth(1601).setScrollFactor(0);
-      this.buttons.push(label);
-    });
-    
-    // Create bar number labels
-    for (let col = 0; col < gridCols; col += 4) {
-      const label = this.add.text(gridStartX + col * cellWidth, gridStartY - 20, (col + 1).toString(), 
-        { font: '10px Arial', fill: '#ffffff' }
-      ).setDepth(1601).setScrollFactor(0);
-      this.buttons.push(label);
-    }
-    
-    // Add grid background
-    const gridBg = this.add.rectangle(gridStartX, gridStartY, gridCols * cellWidth, gridRows * cellHeight, 0x222222)
-      .setOrigin(0, 0).setDepth(1601).setScrollFactor(0);
-    this.buttons.push(gridBg);
-    
-    // Create grid cells
-    for (let row = 0; row < gridRows; row++) {
-      gridCells[row] = [];
-      for (let col = 0; col < gridCols; col++) {
-        // Create cell with border
-        const cell = this.add.rectangle(
-          gridStartX + col * cellWidth, 
-          gridStartY + row * cellHeight, 
-          cellWidth - 1, 
-          cellHeight - 1, 
-          0x333333
-        ).setOrigin(0, 0).setDepth(1602).setScrollFactor(0);
+    // Create track tabs
+    const trackTabs = [];
+    tracks.forEach((track, index) => {
+      const tab = this.add.rectangle(
+        boxX + index * tabWidth, 
+        boxY + 25, // Moved up
+        tabWidth, 
+        tabHeight, 
+        index === activeTrack ? track.color : 0x444444
+      ).setOrigin(0, 0).setDepth(1601).setScrollFactor(0);
+      
+      const tabLabel = this.add.text(
+        boxX + index * tabWidth + tabWidth/2, 
+        boxY + 25 + tabHeight/2, 
+        track.name, 
+        { font: '10px Arial', fill: '#000000', align: 'center' }
+      ).setOrigin(0.5).setDepth(1602).setScrollFactor(0);
+      
+      // Make tab interactive
+      tab.setInteractive().on('pointerdown', () => {
+        // Switch active track
+        activeTrack = index;
         
-        // Highlight every 4th column for rhythm reference
-        if (col % 4 === 0) {
-          cell.setFillStyle(0x444444);
-        }
-        
-        // Make cell interactive
-        cell.setInteractive().on('pointerdown', () => {
-          // Toggle cell state
-          const isActive = cell.fillColor !== 0x00FF00;
-          
-          // If toggling on, deactivate other notes in the same column (only one note per time)
-          if (isActive) {
-            for (let r = 0; r < gridRows; r++) {
-              if (r !== row) {
-                gridCells[r][col].setFillStyle(col % 4 === 0 ? 0x444444 : 0x333333);
-              }
-            }
-          }
-          
-          // Set cell color based on state
-          cell.setFillStyle(isActive ? 0x00FF00 : (col % 4 === 0 ? 0x444444 : 0x333333));
-          
-          // If turning on, play the note for preview
-          if (isActive) {
-            this.playNote(noteLabels[row], 0.2);
-          }
+        // Update tab visuals
+        trackTabs.forEach((t, i) => {
+          t.tab.setFillStyle(i === activeTrack ? tracks[i].color : 0x444444);
         });
         
-        gridCells[row][col] = cell;
-        this.buttons.push(cell);
+        // Update sequencer grid visibility
+        updateGridVisibility();
+      });
+      
+      trackTabs.push({ tab, label: tabLabel });
+      this.buttons.push(tab, tabLabel);
+    });
+    
+    // Sequencer grid setup - made more compact
+    const gridStartX = boxX + 40; // Reduced margin
+    const gridStartY = boxY + 60; // Moved up
+    const cellWidth = 24; // Reduced from 30
+    const cellHeight = 20; // Reduced from 25
+    const gridCols = 16; // 16 steps
+    const gridRows = 8; // 8 notes per track
+    
+    // Create step number labels
+    for (let col = 0; col < gridCols; col++) {
+      const stepLabel = this.add.text(
+        gridStartX + col * cellWidth + cellWidth/2, 
+        gridStartY - 12, 
+        (col + 1).toString(), 
+        { font: '8px Arial', fill: '#ffffff', align: 'center' }
+      ).setOrigin(0.5).setDepth(1601).setScrollFactor(0);
+      this.buttons.push(stepLabel);
+      
+      // Add visual separator every 4 steps
+      if ((col + 1) % 4 === 0 && col < gridCols - 1) {
+        const separator = this.add.line(
+          gridStartX + (col + 1) * cellWidth - cellWidth/2,
+          gridStartY - 15,
+          0, 0, 0, gridRows * cellHeight + 30,
+          0x666666, 0.5
+        ).setOrigin(0, 0).setDepth(1600).setScrollFactor(0);
+        this.buttons.push(separator);
       }
     }
     
-    // Create horizontal grid lines
-    for (let row = 0; row <= gridRows; row++) {
-      const line = this.add.line(
-        gridStartX, 
-        gridStartY + row * cellHeight, 
-        0, 
-        0, 
-        gridCols * cellWidth, 
-        0, 
-        0x555555
-      ).setOrigin(0, 0).setDepth(1603).setScrollFactor(0);
-      this.buttons.push(line);
-    }
+    // Store sequencer data for all tracks
+    const sequencerData = tracks.map(() => {
+      const trackData = [];
+      for (let step = 0; step < gridCols; step++) {
+        trackData[step] = [];
+        for (let note = 0; note < gridRows; note++) {
+          trackData[step][note] = false;
+        }
+      }
+      return trackData;
+    });
     
-    // Create vertical grid lines
-    for (let col = 0; col <= gridCols; col++) {
-      const line = this.add.line(
-        gridStartX + col * cellWidth, 
-        gridStartY, 
-        0, 
-        0, 
-        0, 
-        gridRows * cellHeight, 
-        0x555555
-      ).setOrigin(0, 0).setDepth(1603).setScrollFactor(0);
-      this.buttons.push(line);
-    }
+    // Create sequencer grids for each track (only one visible at a time)
+    const trackGrids = [];
     
-    // Add playback controls
-    const controlY = gridStartY + gridRows * cellHeight + 20;
-    
-    // Play button
-    const playBtn = this.add.text(gridStartX, controlY, '▶ Play', { font: '14px Arial', fill: '#99ff99' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    
-    // Stop button
-    const stopBtn = this.add.text(gridStartX + 100, controlY, '■ Stop', { font: '14px Arial', fill: '#ff9999' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    tracks.forEach((track, trackIndex) => {
+      const grid = [];
       
-    // Loop toggle
-    const loopToggle = this.add.text(gridStartX + 200, controlY, '↻ Loop: OFF', { font: '14px Arial', fill: '#ffffff' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    
-    // BPM control
-    const bpmLabel = this.add.text(gridStartX + 300, controlY, 'BPM:', { font: '14px Arial', fill: '#ffffff' })
-      .setDepth(1602).setScrollFactor(0);
-      
-    const bpmValue = this.add.text(gridStartX + 350, controlY, '120', { font: '14px Arial', fill: '#ffffff' })
-      .setDepth(1602).setScrollFactor(0);
-    
-    const bpmDec = this.add.text(gridStartX + 340, controlY, '-', { font: '14px Arial', fill: '#ffffff' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
-      
-    const bpmInc = this.add.text(gridStartX + 390, controlY, '+', { font: '14px Arial', fill: '#ffffff' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    
-    this.buttons.push(playBtn, stopBtn, loopToggle, bpmLabel, bpmValue, bpmDec, bpmInc);
-    
-    // Add pattern presets based on genre
-    const presetY = controlY + 40;
-    const presetLabel = this.add.text(gridStartX, presetY, 'Presets:', { font: '14px Arial', fill: '#ffffff' })
-      .setDepth(1602).setScrollFactor(0);
-    this.buttons.push(presetLabel);
-    
-    // Create preset buttons
-    const presets = this.createMusicPresets(genre);
-    let presetX = gridStartX + 80;
-    
-    presets.forEach((preset, index) => {
-      const presetBtn = this.add.text(presetX, presetY, preset.name, { font: '12px Arial', fill: '#ffff99' })
-        .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+      // Create note labels for this track
+      const noteLabels = [];
+      track.notes.forEach((note, noteIndex) => {
+        const label = this.add.text(
+          gridStartX - 30, 
+          gridStartY + noteIndex * cellHeight + cellHeight/2, 
+          note, 
+          { font: '8px Arial', fill: '#ffffff', align: 'center' }
+        ).setOrigin(0.5).setDepth(1601).setScrollFactor(0);
         
-      presetBtn.on('pointerdown', () => {
-        // Clear current grid
-        this.clearMusicGrid(gridCells, gridCols, gridRows);
-        
-        // Apply preset pattern
-        preset.pattern.forEach(note => {
-          const rowIndex = noteLabels.indexOf(note.note);
-          if (rowIndex !== -1) {
-            const col = note.position;
-            gridCells[rowIndex][col].setFillStyle(0x00FF00);
-          }
-        });
+        label.setVisible(trackIndex === activeTrack);
+        noteLabels.push(label);
+        this.buttons.push(label);
       });
       
-      this.buttons.push(presetBtn);
-      presetX += preset.name.length * 8 + 20; // Space presets based on name length
+      // Create grid cells
+      for (let step = 0; step < gridCols; step++) {
+        grid[step] = [];
+        for (let note = 0; note < gridRows; note++) {
+          const cell = this.add.rectangle(
+            gridStartX + step * cellWidth, 
+            gridStartY + note * cellHeight, 
+            cellWidth - 2, 
+            cellHeight - 2, 
+            0x333333
+          ).setOrigin(0, 0).setDepth(1602).setScrollFactor(0);
+          
+          // Highlight every 4th step
+          if ((step + 1) % 4 === 0) {
+            cell.setStrokeStyle(1, 0x666666);
+          }
+          
+          // Make cell interactive
+          cell.setInteractive().on('pointerdown', () => {
+            // Toggle cell state
+            const isActive = sequencerData[trackIndex][step][note];
+            sequencerData[trackIndex][step][note] = !isActive;
+            
+            // Update visual
+            cell.setFillStyle(!isActive ? track.color : 0x333333);
+            
+            // Play note preview
+            if (!isActive) {
+              this.playTrackNote(track, note, 0.2, track.volume);
+            }
+          });
+          
+          cell.setVisible(trackIndex === activeTrack);
+          grid[step][note] = cell;
+          this.buttons.push(cell);
+        }
+      }
+      
+      trackGrids.push({ grid, noteLabels });
     });
     
-    // Save and cancel buttons
-    const buttonY = boxY + boxH - 40;
+    // Function to update grid visibility based on active track
+    const updateGridVisibility = () => {
+      trackGrids.forEach((trackGrid, trackIndex) => {
+        const isVisible = trackIndex === activeTrack;
+        
+        // Update note labels
+        trackGrid.noteLabels.forEach(label => label.setVisible(isVisible));
+        
+        // Update grid cells
+        for (let step = 0; step < gridCols; step++) {
+          for (let note = 0; note < gridRows; note++) {
+            trackGrid.grid[step][note].setVisible(isVisible);
+            
+            // Update cell color based on sequencer data
+            const isActive = sequencerData[trackIndex][step][note];
+            trackGrid.grid[step][note].setFillStyle(isActive ? tracks[trackIndex].color : 0x333333);
+          }
+        }
+      });
+    };
     
-    const clearBtn = this.add.text(boxX + 20, buttonY, 'Clear All', { font: '14px Arial', fill: '#ff9999' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    // Initialize grid visibility
+    updateGridVisibility();
     
-    clearBtn.on('pointerdown', () => {
-      this.clearMusicGrid(gridCells, gridCols, gridRows);
-    });
+    // Create playback controls - positioned more compactly
+    const controlY = gridStartY + gridRows * cellHeight + 20; // Reduced spacing
     
-    const saveBtn = this.add.text(boxX + boxW - 200, buttonY, 'Save Track', { font: '14px Arial', fill: '#99ff99' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    
-    const cancelBtn = this.add.text(boxX + boxW - 100, buttonY, 'Cancel', { font: '14px Arial', fill: '#ff9999' })
-      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    
-    this.buttons.push(clearBtn, saveBtn, cancelBtn);
-    
-    // Playback variables
+    // Playback state
     let isPlaying = false;
-    let playbackCol = 0;
-    let looping = false;
+    let currentStep = 0;
     let bpm = 120;
+    let isLooping = false;
     let playbackTimer = null;
-    let playbackMarker = null;
     
-    // Playback marker
-    playbackMarker = this.add.rectangle(
+    // Create playback marker
+    const playbackMarker = this.add.rectangle(
       gridStartX, 
       gridStartY, 
       cellWidth, 
       gridRows * cellHeight, 
       0xFFFFFF, 
-      0.2
-    ).setOrigin(0, 0).setDepth(1604).setScrollFactor(0).setVisible(false);
+      0.3
+    ).setOrigin(0, 0).setDepth(1605).setScrollFactor(0).setVisible(false);
     this.buttons.push(playbackMarker);
     
-    // Play button functionality
-    playBtn.on('pointerdown', () => {
-      if (isPlaying) return;
-      
-      isPlaying = true;
-      playbackMarker.setVisible(true);
-      
-      // Calculate interval based on BPM (beats per minute)
-      // 4 grid columns = 1 beat
-      const interval = (60 / bpm) * 250; // milliseconds per column
-      
-      const playStep = () => {
-        if (!isPlaying) return;
-        
-        // Move marker
-        playbackMarker.x = gridStartX + playbackCol * cellWidth;
-        
-        // Play active notes in current column
-        for (let row = 0; row < gridRows; row++) {
-          if (gridCells[row][playbackCol].fillColor === 0x00FF00) {
-            this.playNote(noteLabels[row], 0.2);
-          }
-        }
-        
-        // Advance to next column
-        playbackCol++;
-        
-        // Check for end of sequence
-        if (playbackCol >= gridCols) {
-          if (looping) {
-            playbackCol = 0;
-          } else {
-            isPlaying = false;
-            playbackMarker.setVisible(false);
-            return;
-          }
-        }
-        
-        // Schedule next step
-        playbackTimer = setTimeout(playStep, interval);
-      };
-      
-      // Start from beginning
-      playbackCol = 0;
-      playStep();
-    });
+    // Play button
+    const playBtn = this.add.text(gridStartX, controlY, '▶ PLAY', { font: '12px Arial', fill: '#00FF00' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
-    // Stop button functionality
-    stopBtn.on('pointerdown', () => {
-      isPlaying = false;
-      if (playbackTimer) clearTimeout(playbackTimer);
-      playbackMarker.setVisible(false);
-      playbackCol = 0;
-    });
+    // Stop button
+    const stopBtn = this.add.text(gridStartX + 65, controlY, '■ STOP', { font: '12px Arial', fill: '#FF0000' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
-    // Loop toggle functionality
-    loopToggle.on('pointerdown', () => {
-      looping = !looping;
-      loopToggle.setText(looping ? '↻ Loop: ON' : '↻ Loop: OFF');
-    });
+    // Loop button
+    const loopBtn = this.add.text(gridStartX + 125, controlY, '↻ LOOP', { font: '12px Arial', fill: '#FFFF00' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
     
     // BPM controls
+    const bpmLabel = this.add.text(gridStartX + 190, controlY, 'BPM:', { font: '12px Arial', fill: '#ffffff' })
+      .setDepth(1602).setScrollFactor(0);
+    
+    const bpmValue = this.add.text(gridStartX + 230, controlY, bpm.toString(), { font: '12px Arial', fill: '#ffffff' })
+      .setDepth(1602).setScrollFactor(0);
+    
+    const bpmDec = this.add.text(gridStartX + 215, controlY, '◀', { font: '12px Arial', fill: '#ffffff' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    const bpmInc = this.add.text(gridStartX + 260, controlY, '▶', { font: '12px Arial', fill: '#ffffff' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    this.buttons.push(playBtn, stopBtn, loopBtn, bpmLabel, bpmValue, bpmDec, bpmInc);
+    
+    // Preset patterns for quick start - moved to single row
+    const presetY = controlY + 25;
+    const presetLabel = this.add.text(gridStartX, presetY, 'PRESETS:', { font: '10px Arial', fill: '#ffffff' })
+      .setDepth(1602).setScrollFactor(0);
+    
+    const kickDrumBtn = this.add.text(gridStartX + 60, presetY, 'KICK', { font: '9px Arial', fill: '#FFFF99' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    const bassLineBtn = this.add.text(gridStartX + 100, presetY, 'BASS', { font: '9px Arial', fill: '#FFFF99' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    const chordBtn = this.add.text(gridStartX + 140, presetY, 'CHORD', { font: '9px Arial', fill: '#FFFF99' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    const clearBtn = this.add.text(gridStartX + 185, presetY, 'CLEAR', { font: '9px Arial', fill: '#FF9999' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    this.buttons.push(presetLabel, kickDrumBtn, bassLineBtn, chordBtn, clearBtn);
+    
+    // Main control buttons
+    const buttonY = boxY + boxH - 25; // Positioned near bottom
+    
+    const saveBtn = this.add.text(boxX + boxW - 120, buttonY, 'SAVE TRACK', { font: '12px Arial', fill: '#00FF00' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    const cancelBtn = this.add.text(boxX + boxW - 50, buttonY, 'EXIT', { font: '12px Arial', fill: '#FF0000' })
+      .setDepth(1602).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    
+    this.buttons.push(saveBtn, cancelBtn);
+    
+    // Playback functionality
+    const playStep = () => {
+      if (!isPlaying) return;
+      
+      // Update playback marker position
+      playbackMarker.x = gridStartX + currentStep * cellWidth;
+      playbackMarker.setVisible(true);
+      
+      // Play all active notes across all tracks for current step
+      tracks.forEach((track, trackIndex) => {
+        for (let note = 0; note < gridRows; note++) {
+          if (sequencerData[trackIndex][currentStep][note]) {
+            this.playTrackNote(track, note, 0.15, track.volume);
+          }
+        }
+      });
+      
+      // Advance to next step
+      currentStep = (currentStep + 1) % gridCols;
+      
+      // Check if sequence should continue
+      if (currentStep === 0 && !isLooping) {
+        isPlaying = false;
+        playbackMarker.setVisible(false);
+        playBtn.setText('▶ PLAY');
+        if (playbackTimer) clearTimeout(playbackTimer);
+        return;
+      }
+      
+      // Schedule next step
+      const stepDuration = (60 / bpm) * 250; // 16th notes at given BPM
+      playbackTimer = setTimeout(playStep, stepDuration);
+    };
+    
+    // Button event handlers
+    playBtn.on('pointerdown', () => {
+      if (isPlaying) {
+        isPlaying = false;
+        playBtn.setText('▶ PLAY');
+        playbackMarker.setVisible(false);
+        if (playbackTimer) clearTimeout(playbackTimer);
+      } else {
+        isPlaying = true;
+        playBtn.setText('⏸ PAUSE');
+        playStep();
+      }
+    });
+    
+    stopBtn.on('pointerdown', () => {
+      isPlaying = false;
+      currentStep = 0;
+      playBtn.setText('▶ PLAY');
+      playbackMarker.setVisible(false);
+      if (playbackTimer) clearTimeout(playbackTimer);
+    });
+    
+    loopBtn.on('pointerdown', () => {
+      isLooping = !isLooping;
+      loopBtn.setFill(isLooping ? '#00FF00' : '#FFFF00');
+    });
+    
     bpmDec.on('pointerdown', () => {
       if (bpm > 60) {
-        bpm -= 5;
+        bpm -= 10;
         bpmValue.setText(bpm.toString());
       }
     });
     
     bpmInc.on('pointerdown', () => {
-      if (bpm < 240) {
-        bpm += 5;
+      if (bpm < 200) {
+        bpm += 10;
         bpmValue.setText(bpm.toString());
       }
     });
     
-    // Save button functionality
+    // Preset pattern handlers
+    kickDrumBtn.on('pointerdown', () => {
+      if (activeTrack === 2) { // Drums track
+        // Add kick pattern on steps 1, 5, 9, 13
+        [0, 4, 8, 12].forEach(step => {
+          sequencerData[2][step][0] = true; // Kick is first note
+        });
+        updateGridVisibility();
+      }
+    });
+    
+    bassLineBtn.on('pointerdown', () => {
+      if (activeTrack === 0) { // Bass track
+        // Add simple bass line
+        [0, 2, 4, 6].forEach((step, index) => {
+          sequencerData[0][step][index % 4] = true;
+        });
+        updateGridVisibility();
+      }
+    });
+    
+    chordBtn.on('pointerdown', () => {
+      if (activeTrack === 3) { // Pad track
+        // Add chord pattern
+        [0, 8].forEach(step => {
+          [0, 2, 4].forEach(note => { // C-E-G chord
+            sequencerData[3][step][note] = true;
+          });
+        });
+        updateGridVisibility();
+      }
+    });
+    
+    clearBtn.on('pointerdown', () => {
+      // Clear current track
+      for (let step = 0; step < gridCols; step++) {
+        for (let note = 0; note < gridRows; note++) {
+          sequencerData[activeTrack][step][note] = false;
+        }
+      }
+      updateGridVisibility();
+    });
+    
     saveBtn.on('pointerdown', () => {
       // Stop playback
       isPlaying = false;
       if (playbackTimer) clearTimeout(playbackTimer);
       
-      // Create a track name
-      const trackName = `8-bit ${genre} Track`;
+      // Create composition name
+      const trackName = `Polyphonic Composition`;
       this.addToInventory(trackName, 1);
       
       // Show completion message
       this.clearButtons();
-      this.showDialog(`You created "${trackName}"!\nIt has been added to your inventory.`);
+      this.showDialog(`"${trackName}" saved to inventory!\n\nYour 4-track composition is ready!`);
       this.createButtons([
         { label: 'OK', callback: () => this.closeCurrentScreen() }
       ]);
     });
     
-    // Cancel button functionality
     cancelBtn.on('pointerdown', () => {
       // Stop playback
       isPlaying = false;
       if (playbackTimer) clearTimeout(playbackTimer);
       
       this.clearButtons();
-      this.showCustomCreation({ name: 'music_studio', label: 'Music Studio' });
+      this.closeCurrentScreen();
     });
   }
   
-  // Helper method to clear the music grid
-  clearMusicGrid(gridCells, gridCols, gridRows) {
-    for (let row = 0; row < gridRows; row++) {
-      for (let col = 0; col < gridCols; col++) {
-        gridCells[row][col].setFillStyle(col % 4 === 0 ? 0x444444 : 0x333333);
-      }
-    }
-  }
-  
-  // Helper method to create preset patterns based on genre
-  createMusicPresets(genre) {
-    const presets = [];
-    
-    switch(genre) {
-      case 'upbeat':
-        presets.push({
-          name: 'Happy Melody',
-          pattern: [
-            { note: 'C', position: 0 },
-            { note: 'E', position: 4 },
-            { note: 'G', position: 8 },
-            { note: 'C', position: 12 },
-            { note: 'A', position: 16 },
-            { note: 'G', position: 20 },
-            { note: 'E', position: 24 },
-            { note: 'C', position: 28 }
-          ]
-        });
-        presets.push({
-          name: 'Dance Beat',
-          pattern: [
-            { note: 'C', position: 0 },
-            { note: 'C', position: 8 },
-            { note: 'G', position: 16 },
-            { note: 'G', position: 24 }
-          ]
-        });
-        break;
-        
-      case 'mysterious':
-        presets.push({
-          name: 'Suspense',
-          pattern: [
-            { note: 'D', position: 0 },
-            { note: 'A#', position: 4 },
-            { note: 'A', position: 8 },
-            { note: 'D#', position: 16 },
-            { note: 'D', position: 20 },
-            { note: 'A#', position: 24 }
-          ]
-        });
-        presets.push({
-          name: 'Enigma',
-          pattern: [
-            { note: 'B', position: 0 },
-            { note: 'E', position: 8 },
-            { note: 'G', position: 12 },
-            { note: 'F#', position: 16 },
-            { note: 'B', position: 24 }
-          ]
-        });
-        break;
-        
-      case 'epic':
-        presets.push({
-          name: 'Battle Theme',
-          pattern: [
-            { note: 'C', position: 0 },
-            { note: 'C', position: 4 },
-            { note: 'G', position: 8 },
-            { note: 'G', position: 12 },
-            { note: 'A', position: 16 },
-            { note: 'A', position: 20 },
-            { note: 'G', position: 24 }
-          ]
-        });
-        presets.push({
-          name: 'Triumph',
-          pattern: [
-            { note: 'C', position: 0 },
-            { note: 'E', position: 4 },
-            { note: 'G', position: 8 },
-            { note: 'C', position: 16 },
-            { note: 'D', position: 20 },
-            { note: 'E', position: 24 }
-          ]
-        });
-        break;
-        
-      case 'peaceful':
-        presets.push({
-          name: 'Lullaby',
-          pattern: [
-            { note: 'G', position: 0 },
-            { note: 'E', position: 8 },
-            { note: 'D', position: 16 },
-            { note: 'C', position: 24 }
-          ]
-        });
-        presets.push({
-          name: 'Gentle Flow',
-          pattern: [
-            { note: 'C', position: 0 },
-            { note: 'E', position: 4 },
-            { note: 'G', position: 8 },
-            { note: 'E', position: 12 },
-            { note: 'C', position: 16 },
-            { note: 'E', position: 20 },
-            { note: 'G', position: 24 },
-            { note: 'E', position: 28 }
-          ]
-        });
-        break;
-        
-      case 'adventurous':
-        presets.push({
-          name: 'Quest',
-          pattern: [
-            { note: 'C', position: 0 },
-            { note: 'D', position: 4 },
-            { note: 'E', position: 8 },
-            { note: 'F', position: 12 },
-            { note: 'G', position: 16 },
-            { note: 'A', position: 20 },
-            { note: 'B', position: 24 },
-            { note: 'C', position: 28 }
-          ]
-        });
-        presets.push({
-          name: 'Journey',
-          pattern: [
-            { note: 'E', position: 0 },
-            { note: 'G', position: 8 },
-            { note: 'A', position: 16 },
-            { note: 'B', position: 24 }
-          ]
-        });
-        break;
-        
-      case 'romantic':
-        presets.push({
-          name: 'Love Theme',
-          pattern: [
-            { note: 'C', position: 0 },
-            { note: 'E', position: 4 },
-            { note: 'A', position: 8 },
-            { note: 'G', position: 16 },
-            { note: 'F', position: 20 },
-            { note: 'E', position: 24 }
-          ]
-        });
-        presets.push({
-          name: 'Serenade',
-          pattern: [
-            { note: 'E', position: 0 },
-            { note: 'G#', position: 4 },
-            { note: 'B', position: 8 },
-            { note: 'A', position: 16 },
-            { note: 'B', position: 20 },
-            { note: 'E', position: 24 }
-          ]
-        });
-        break;
-    }
-    
-    // Add a universal rhythm pattern
-    presets.push({
-      name: 'Basic Beat',
-      pattern: [
-        { note: 'C', position: 0 },
-        { note: 'C', position: 8 },
-        { note: 'G', position: 16 },
-        { note: 'C', position: 24 }
-      ]
-    });
-    
-    return presets;
-  }
-  
-  // Helper method to play a note
-  playNote(note, duration) {
+  // Helper method to play notes for different tracks
+  playTrackNote(track, noteIndex, duration, volume = 0.5) {
     try {
-      // Create audio context if it doesn't exist
-      if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // Ensure audio context is running
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
       }
+
+      const now = this.audioContext.currentTime;
       
-      // Define note frequencies (C4 to B4)
-      const noteFrequencies = {
-        'C': 261.63,
-        'C#': 277.18,
-        'D': 293.66,
-        'D#': 311.13,
-        'E': 329.63,
-        'F': 349.23,
-        'F#': 369.99,
-        'G': 392.00,
-        'G#': 415.30,
-        'A': 440.00,
-        'A#': 466.16,
-        'B': 493.88
+      if (track.name === 'DRUMS') {
+        // 808-style drum machine sounds
+        switch(noteIndex) {
+          case 0: // Kick
+            this.play808Kick(now, duration, volume);
+            break;
+          case 1: // Snare
+            this.play808Snare(now, duration, volume);
+            break;
+          case 2: // HiHat
+            this.play808HiHat(now, duration, volume);
+            break;
+          case 3: // Crash
+            this.play808Crash(now, duration, volume);
+            break;
+          case 4: // Tom1
+            this.play808Tom(now, duration, volume, 150);
+            break;
+          case 5: // Tom2
+            this.play808Tom(now, duration, volume, 100);
+            break;
+          case 6: // Ride
+            this.play808Ride(now, duration, volume);
+            break;
+          case 7: // Clap
+            this.play808Clap(now, duration, volume);
+            break;
+        }
+      } else {
+        // Melodic instruments
+        const noteFrequencies = {
+          'C2': 65.41, 'D2': 73.42, 'E2': 82.41, 'F2': 87.31, 'G2': 98.00, 'A2': 110.00, 'B2': 123.47, 'C3': 130.81,
+          'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94, 'C4': 261.63,
+          'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'G4': 392.00, 'A4': 440.00, 'B4': 493.88, 'C5': 523.25
+        };
+        
+        const noteName = track.notes[noteIndex];
+        const frequency = noteFrequencies[noteName] || 440;
+        
+        switch(track.name) {
+          case 'BASS':
+            this.play8BitBass(now, frequency, duration, volume);
+            break;
+          case 'SYNTH':
+            this.play8BitSynth(now, frequency, duration, volume);
+            break;
+          case 'PAD':
+            this.play8BitPad(now, frequency, duration, volume);
+            break;
+        }
+      }
+    } catch (error) {
+      console.error('Audio playback error:', error);
+    }
+  }
+
+  // 808-style drum sounds
+  play808Kick(now, duration, volume) {
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    osc.connect(gain);
+    gain.connect(this.trackGains.drums);
+    
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  play808Snare(now, duration, volume) {
+    const noise = this.audioContext.createBufferSource();
+    const noiseGain = this.audioContext.createGain();
+    const osc = this.audioContext.createOscillator();
+    const oscGain = this.audioContext.createGain();
+    
+    // Create noise buffer
+    const bufferSize = this.audioContext.sampleRate * duration;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    noise.buffer = buffer;
+    noise.connect(noiseGain);
+    noiseGain.connect(this.trackGains.drums);
+    
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(100, now);
+    osc.frequency.exponentialRampToValueAtTime(0.01, now + duration);
+    osc.connect(oscGain);
+    oscGain.connect(this.trackGains.drums);
+    
+    noiseGain.gain.setValueAtTime(volume * 0.5, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    oscGain.gain.setValueAtTime(volume * 0.5, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    noise.start(now);
+    osc.start(now);
+    noise.stop(now + duration);
+    osc.stop(now + duration);
+  }
+
+  play808HiHat(now, duration, volume) {
+    const noise = this.audioContext.createBufferSource();
+    const gain = this.audioContext.createGain();
+    const filter = this.audioContext.createBiquadFilter();
+    
+    // Create noise buffer
+    const bufferSize = this.audioContext.sampleRate * duration;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    noise.buffer = buffer;
+    filter.type = 'highpass';
+    filter.frequency.value = 7000;
+    filter.Q.value = 1;
+    
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.trackGains.drums);
+    
+    gain.gain.setValueAtTime(volume * 0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    noise.start(now);
+    noise.stop(now + duration);
+  }
+
+  play808Crash(now, duration, volume) {
+    const noise = this.audioContext.createBufferSource();
+    const gain = this.audioContext.createGain();
+    const filter = this.audioContext.createBiquadFilter();
+    
+    // Create noise buffer
+    const bufferSize = this.audioContext.sampleRate * duration;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    noise.buffer = buffer;
+    filter.type = 'bandpass';
+    filter.frequency.value = 1000;
+    filter.Q.value = 1;
+    
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.trackGains.drums);
+    
+    gain.gain.setValueAtTime(volume * 0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    noise.start(now);
+    noise.stop(now + duration);
+  }
+
+  play808Tom(now, duration, volume, frequency) {
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(frequency, now);
+    osc.frequency.exponentialRampToValueAtTime(frequency * 0.1, now + duration);
+    
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    osc.connect(gain);
+    gain.connect(this.trackGains.drums);
+    
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  play808Ride(now, duration, volume) {
+    const noise = this.audioContext.createBufferSource();
+    const gain = this.audioContext.createGain();
+    const filter = this.audioContext.createBiquadFilter();
+    
+    // Create noise buffer
+    const bufferSize = this.audioContext.sampleRate * duration;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    noise.buffer = buffer;
+    filter.type = 'bandpass';
+    filter.frequency.value = 2000;
+    filter.Q.value = 1;
+    
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.trackGains.drums);
+    
+    gain.gain.setValueAtTime(volume * 0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    noise.start(now);
+    noise.stop(now + duration);
+  }
+
+  play808Clap(now, duration, volume) {
+    const noise = this.audioContext.createBufferSource();
+    const gain = this.audioContext.createGain();
+    const filter = this.audioContext.createBiquadFilter();
+    
+    // Create noise buffer
+    const bufferSize = this.audioContext.sampleRate * duration;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    noise.buffer = buffer;
+    filter.type = 'bandpass';
+    filter.frequency.value = 1000;
+    filter.Q.value = 1;
+    
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.trackGains.drums);
+    
+    gain.gain.setValueAtTime(volume * 0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    noise.start(now);
+    noise.stop(now + duration);
+  }
+
+  // 8-bit style synth sounds
+  play8BitBass(now, frequency, duration, volume) {
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    const filter = this.audioContext.createBiquadFilter();
+    
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(frequency, now);
+    
+    filter.type = 'lowpass';
+    filter.frequency.value = 1000;
+    filter.Q.value = 1;
+    
+    gain.gain.setValueAtTime(volume * 0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.trackGains.bass);
+    
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  play8BitSynth(now, frequency, duration, volume) {
+    const osc1 = this.audioContext.createOscillator();
+    const osc2 = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    const filter = this.audioContext.createBiquadFilter();
+    
+    osc1.type = 'square';
+    osc2.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(frequency, now);
+    osc2.frequency.setValueAtTime(frequency * 1.01, now); // Slight detune
+    
+    filter.type = 'lowpass';
+    filter.frequency.value = 2000;
+    filter.Q.value = 1;
+    
+    gain.gain.setValueAtTime(volume * 0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.trackGains.synth);
+    
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + duration);
+    osc2.stop(now + duration);
+  }
+
+  play8BitPad(now, frequency, duration, volume) {
+    const osc1 = this.audioContext.createOscillator();
+    const osc2 = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    const filter = this.audioContext.createBiquadFilter();
+    
+    osc1.type = 'sine';
+    osc2.type = 'triangle';
+    osc1.frequency.setValueAtTime(frequency, now);
+    osc2.frequency.setValueAtTime(frequency * 1.02, now); // Slight detune
+    
+    filter.type = 'lowpass';
+    filter.frequency.value = 1000;
+    filter.Q.value = 1;
+    
+    gain.gain.setValueAtTime(volume * 0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration * 3); // Longer release
+    
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.trackGains.pad);
+    
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + duration * 3);
+    osc2.stop(now + duration * 3);
+  }
+
+  initAudio() {
+    try {
+      // Create audio context
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create master gain node
+      this.masterGain = this.audioContext.createGain();
+      this.masterGain.gain.value = 0.3; // Lower master volume to prevent clipping
+      this.masterGain.connect(this.audioContext.destination);
+      
+      // Create separate gain nodes for each track type
+      this.trackGains = {
+        bass: this.audioContext.createGain(),
+        synth: this.audioContext.createGain(),
+        drums: this.audioContext.createGain(),
+        pad: this.audioContext.createGain()
       };
       
-      // Create oscillator
-      const oscillator = this.audioContext.createOscillator();
-      const gainNode = this.audioContext.createGain();
+      // Connect track gains to master
+      Object.values(this.trackGains).forEach(gain => {
+        gain.connect(this.masterGain);
+      });
       
-      // Set waveform to square for 8-bit sound
-      oscillator.type = 'square';
-      
-      // Set frequency based on note
-      if (noteFrequencies[note]) {
-        oscillator.frequency.setValueAtTime(noteFrequencies[note], this.audioContext.currentTime);
-      }
-      
-      // Connect nodes
-      oscillator.connect(gainNode);
-      gainNode.connect(this.audioContext.destination);
-      
-      // Set envelope
-      gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-      
-      // Play note
-      oscillator.start();
-      oscillator.stop(this.audioContext.currentTime + duration);
+      console.log('Audio system initialized successfully');
     } catch (error) {
-      console.log('Audio playback error:', error);
+      console.error('Error initializing audio:', error);
     }
   }
 } 
