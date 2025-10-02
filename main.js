@@ -156,6 +156,12 @@ const SOUNDS = {
   LEVEL_UP: 'level_up'
 };
 
+// Survival drain constants
+const SURVIVAL_DRAIN_INTERVAL = 2000; // ms
+const SURVIVAL_DRAIN_AMOUNT = 1;
+const HEALTH_DRAIN_THRESHOLD = 30;
+const HEALTH_DRAIN_AMOUNT = 2;
+
 // Helper Function: Check if player has required camping materials (2 sticks and 1 cloth)
 function hasCampingMaterials(scene) {
   const stick = scene.localInventory.find(item => item.name.toLowerCase() === "stick");
@@ -414,14 +420,7 @@ function applySurvivalTickAndOutcome(scene, outcomeText) {
     }
   }
   
-  // SECOND: Apply survival ticks (after narrative outcome effects)
-  if (scene.currentZone !== "Village") {
-    scene.playerStats.thirst = Math.max(scene.playerStats.thirst - 5, 0);
-    scene.playerStats.hunger = Math.max(scene.playerStats.hunger - 5, 0);
-    scene.playerStats.stamina = Math.max(scene.playerStats.stamina - 5, 0);
-  }
-  
-  console.log("After applying outcome + survival tick, player stats:", scene.playerStats);
+  console.log("After applying outcome, player stats:", scene.playerStats);
 
   // THIRD: Apply any additional penalties for critically low survival stats
   if (scene.currentZone !== "Village") {
@@ -4299,6 +4298,37 @@ function createScene() {
   updateHUD(this);
   setupFPSCounter(this);
   
+  // Setup continuous survival drain timer
+  if (!this.survivalDrainEvent) {
+    this.survivalDrainEvent = this.time.addEvent({
+      delay: SURVIVAL_DRAIN_INTERVAL,
+      loop: true,
+      callback: () => {
+        if (!this.playerStats) return;
+        if (this.currentZone === "Village") return; // paused condition handled later too
+        const s = this.playerStats;
+
+        // Base drain
+        s.hunger  = Math.max(0, s.hunger  - SURVIVAL_DRAIN_AMOUNT);
+        s.thirst  = Math.max(0, s.thirst  - SURVIVAL_DRAIN_AMOUNT);
+        s.stamina = Math.max(0, s.stamina - SURVIVAL_DRAIN_AMOUNT);
+
+        // Health drain only if ALL three are below threshold
+        if (s.hunger < HEALTH_DRAIN_THRESHOLD &&
+            s.thirst < HEALTH_DRAIN_THRESHOLD &&
+            s.stamina < HEALTH_DRAIN_THRESHOLD) {
+          const prev = s.health;
+          s.health = Math.max(0, s.health - HEALTH_DRAIN_AMOUNT);
+          if (this.player && s.health < prev) {
+            createFloatingText(this, this.player.x, this.player.y - 10, `-${HEALTH_DRAIN_AMOUNT} health (starving)`, 0xff0000);
+          }
+        }
+
+        updateHUD(this);
+      }
+    });
+  }
+  
   // Add a Shady Grove Map to inventory for testing the new travel functionality
   if (zoneData.name === "Outer Grasslands") {
     // Check if player already has the map
@@ -4444,6 +4474,11 @@ function updateScene(time, delta) {
   if (this.isRestarting) return;
   
   if (!this.player || !this.player.body) return;
+
+  // Pause/unpause survival drain based on zone
+  if (this.survivalDrainEvent) {
+    this.survivalDrainEvent.paused = (this.currentZone === "Village");
+  }
 
   // Update game time
   let gameTime = this.registry.get('gameTime') || 0;
